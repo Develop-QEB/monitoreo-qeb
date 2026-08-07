@@ -1,42 +1,44 @@
 import { NavLink } from 'react-router-dom'
+import { NAV_GROUPS } from '@/lib/roles'
+import { useAuth } from '@/stores/authStore'
 import { cn } from '@/lib/utils'
 
-const TREE = [
-  {
-    label: 'monitoreo-qeb',
-    children: [
-      { to: '/', label: 'overview.tsx', end: true },
-      { to: '/frontend', label: 'frontend.tsx' },
-      { to: '/backend', label: 'backend.tsx' },
-      { to: '/database', label: 'database.tsx' },
-    ],
-  },
-]
-
 export function Sidebar() {
+  const user = useAuth((s) => s.user)
+  if (!user) return null
+
+  const visibleGroups = NAV_GROUPS.map((g) => ({
+    ...g,
+    items: g.items.filter((i) => i.roles.includes(user.role)),
+  })).filter((g) => g.items.length > 0)
+
   return (
     <aside className="hidden md:flex w-[230px] shrink-0 flex-col border-r border-border-subtle bg-bg-base">
-      <div className="px-4 h-11 flex items-center gap-2 border-b border-border-subtle">
-        <div className="h-4 w-4 rounded-[3px] bg-brand-500 grid place-items-center">
-          <span className="text-[9px] font-bold text-white leading-none">Q</span>
-        </div>
-        <span className="text-[12px] text-fg-secondary">monitor@qeb</span>
-        <span className="ml-auto text-fg-muted text-[11px]">v0.1</span>
+      <div className="px-4 h-11 flex items-center gap-2.5 border-b border-border-subtle">
+        <img
+          src="/images/logo-bco.png"
+          alt="QEB"
+          className="h-4 w-auto"
+          draggable={false}
+        />
+        <span className="text-fg-faint text-[11px]">·</span>
+        <span className="text-[11.5px] text-fg-secondary">monitor</span>
+        <span className="ml-auto text-fg-muted text-[10.5px]">v0.1</span>
       </div>
 
-      <div className="flex-1 px-2 py-3 overflow-auto no-scrollbar">
-        {TREE.map((group) => (
-          <div key={group.label}>
+      <div className="flex-1 px-2 py-3 overflow-auto no-scrollbar flex flex-col gap-4">
+        {visibleGroups.map((group) => (
+          <div key={group.key}>
             <div className="flex items-center gap-1 px-2 h-6 text-fg-muted text-[11px]">
               <span>▾</span>
               <span>{group.label}</span>
             </div>
             <div>
-              {group.children.map((n) => (
+              {group.items.map((n) => (
                 <NavLink
-                  key={n.to}
-                  to={n.to}
-                  end={n.end}
+                  key={n.path}
+                  to={n.path}
+                  end={n.path === '/'}
                   className={({ isActive }) =>
                     cn(
                       'group relative flex items-center gap-2 pl-6 pr-3 h-7 text-[12.5px] transition-colors',
@@ -54,7 +56,12 @@ export function Sidebar() {
                           isActive ? 'bg-brand-400 opacity-100' : 'opacity-0',
                         )}
                       />
-                      <span className={cn('text-[10px]', isActive ? 'text-brand-400' : 'text-fg-faint')}>
+                      <span
+                        className={cn(
+                          'text-[10px]',
+                          isActive ? 'text-brand-400' : 'text-fg-faint',
+                        )}
+                      >
                         {isActive ? '●' : '○'}
                       </span>
                       <span>{n.label}</span>
@@ -65,13 +72,6 @@ export function Sidebar() {
             </div>
           </div>
         ))}
-
-        <div className="mt-6 px-2">
-          <div className="flex items-center gap-1 px-0 h-6 text-fg-muted text-[11px]">
-            <span>▸</span>
-            <span>system</span>
-          </div>
-        </div>
       </div>
 
       <div className="px-4 py-3 border-t border-border-subtle text-[11px] text-fg-muted flex items-center justify-between">

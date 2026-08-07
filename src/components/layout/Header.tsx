@@ -1,11 +1,20 @@
 import { useEffect, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { useAuth } from '@/stores/authStore'
+import { ROLE_LABEL } from '@/lib/roles'
 
 const CRUMB: Record<string, string> = {
-  '/': 'overview',
-  '/frontend': 'frontend',
-  '/backend': 'backend',
-  '/database': 'database',
+  '/':                   'overview',
+  '/frontend':           'frontend',
+  '/backend':            'backend',
+  '/database':           'database',
+  '/qeb/tickets':        'qeb/tickets',
+  '/qeb/reservas':       'qeb/reservas',
+  '/qeb/campanas':       'qeb/campanas',
+  '/qeb/actividad':      'qeb/actividad',
+  '/admin/users':        'admin/users',
+  '/admin/audit-log':    'admin/audit-log',
+  '/forbidden':          'forbidden',
 }
 
 function formatTime(d: Date) {
@@ -19,13 +28,21 @@ function formatTime(d: Date) {
 
 export function Header() {
   const { pathname } = useLocation()
+  const navigate = useNavigate()
+  const user = useAuth((s) => s.user)
+  const logout = useAuth((s) => s.logout)
   const crumb = CRUMB[pathname] ?? 'overview'
-  const [now, setNow] = useState(() => new Date())
 
+  const [now, setNow] = useState(() => new Date())
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000)
     return () => clearInterval(id)
   }, [])
+
+  function handleLogout() {
+    logout()
+    navigate('/login', { replace: true })
+  }
 
   return (
     <header className="h-11 shrink-0 border-b border-border-subtle bg-bg-base/85 backdrop-blur-md sticky top-0 z-10">
@@ -47,6 +64,23 @@ export function Header() {
             <span className="text-fg-secondary">live</span>
           </div>
           <span className="text-fg-muted tabular-nums glyph">{formatTime(now)}</span>
+
+          {user && (
+            <div className="flex items-center gap-3 pl-5 border-l border-border-subtle">
+              <div className="flex flex-col items-end leading-tight">
+                <span className="text-fg-primary text-[12px]">{user.email}</span>
+                <span className="text-brand-300 text-[10.5px]">
+                  {ROLE_LABEL[user.role]}
+                </span>
+              </div>
+              <button
+                onClick={handleLogout}
+                className="h-7 px-2.5 rounded border border-border-subtle hover:border-state-crit/60 text-fg-muted hover:text-state-crit text-[11px] transition-colors"
+              >
+                logout
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </header>
