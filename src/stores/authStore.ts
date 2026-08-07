@@ -1,7 +1,8 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Role } from '@/lib/roles'
-import { MOCK_USERS } from '@/data/mockUsers'
+import { useUsers } from '@/stores/usersStore'
+import { useAudit } from '@/stores/auditStore'
 
 export interface AuthUser {
   id: string
@@ -18,16 +19,40 @@ interface AuthState {
 
 export const useAuth = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       user: null,
       login: async (email, password) => {
-        // Mock: validar contra MOCK_USERS. En back real será fetch a /api/auth/login.
+        // Mock: validar contra usersStore. En back real será fetch a /api/auth/login.
         await new Promise((r) => setTimeout(r, 320))
-        const found = MOCK_USERS.find(
-          (u) => u.email.toLowerCase() === email.trim().toLowerCase() && u.password === password,
-        )
-        if (!found) return { ok: false, error: 'credenciales inválidas' }
-        if (!found.active) return { ok: false, error: 'usuario deshabilitado' }
+        const emailTrim = email.trim().toLowerCase()
+        const found = useUsers
+          .getState()
+          .users.find((u) => u.email.toLowerCase() === emailTrim && u.password === password)
+
+        if (!found) {
+          useAudit.getState().record({
+            actor: emailTrim || 'unknown',
+            action: 'auth.login_fail',
+            target: emailTrim || 'unknown',
+          })
+          return { ok: false, error: 'credenciales inválidas' }
+        }
+        if (!found.active) {
+          useAudit.getState().record({
+            actor: emailTrim,
+            action: 'auth.login_fail',
+            target: emailTrim,
+            details: 'usuario deshabilitado',
+          })
+          return { ok: false, error: 'usuario deshabilitado' }
+        }
+
+        useUsers.getState().markLogin(found.email)
+        useAudit.getState().record({
+          actor: found.email,
+          action: 'auth.login',
+          target: found.email,
+        })
         set({
           user: {
             id: found.id,
@@ -38,7 +63,17 @@ export const useAuth = create<AuthState>()(
         })
         return { ok: true }
       },
-      logout: () => set({ user: null }),
+      logout: () => {
+        const current = get().user
+        if (current) {
+          useAudit.getState().record({
+            actor: current.email,
+            action: 'auth.logout',
+            target: current.email,
+          })
+        }
+        set({ user: null })
+      },
     }),
     { name: 'monitoreo-qeb:auth' },
   ),
