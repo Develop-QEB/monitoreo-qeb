@@ -1,0 +1,87 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-feature-settings: 'zero', 'ss01', 'cv02';
+    background: #1A1B26;
+    color: #C0CAF5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-size: 13px;
+    line-height: 1.55;
+  }
+
+  ::selection {
+    background: rgba(187, 154, 247, 0.32);
+    color: #ffffff;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(192, 202, 245, 0.08);
+    border-radius: 8px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(192, 202, 245, 0.16);
+  }
+}
+
+@layer components {
+  .row {
+    @apply flex items-center gap-3 py-1.5;
+  }
+  .col-num {
+    @apply text-fg-primary tabular-nums;
+  }
+  .col-key {
+    @apply text-fg-secondary;
+  }
+  .col-muted {
+    @apply text-fg-muted;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .caret::after {
+    content: '';
+    display: inline-block;
+    width: 8px;
+    height: 14px;
+    margin-left: 2px;
+    background: currentColor;
+    vertical-align: -3px;
+    animation: caret 1.05s steps(1) infinite;
+  }
+  @keyframes caret {
+    0%,
+    50% {
+      opacity: 1;
+    }
+    50.01%,
+    100% {
+      opacity: 0;
+    }
+  }
+  .glyph {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+  }
+}
