@@ -213,6 +213,40 @@ export function useCaptureStatus() {
   })
 }
 
+// --------- DO Spaces (qeb-media-main) ---------
+
+export interface SpacesObject {
+  key: string
+  size: number
+  lastModified: string | null
+}
+
+export interface SpacesSummary {
+  configured: boolean
+  reason?: string
+  error?: string
+  bucket?: string
+  region?: string
+  endpoint?: string
+  totalObjects?: number
+  totalBytes?: number
+  totalGiB?: number
+  byExtension?: { ext: string; count: number; bytes: number }[]
+  byTopLevel?: { prefix: string; count: number; bytes: number }[]
+  largest?: SpacesObject[]
+  mostRecent?: SpacesObject[]
+  oldestAt?: string | null
+  newestAt?: string | null
+}
+
+export function useSpacesSummary() {
+  return useQuery({
+    queryKey: ['infra', 'spaces', 'summary'],
+    queryFn: () => api.get<SpacesSummary>('/infra/spaces/summary'),
+    staleTime: 5 * 60_000,
+  })
+}
+
 /**
  * Errores recientes (últimos N minutos). Sirve para el badge de alertas
  * en el header y el widget de overview.

@@ -10,6 +10,7 @@ const CRUMB: Record<string, string> = {
   '/frontend':        'frontend',
   '/backend':         'backend',
   '/database':        'database',
+  '/spaces':          'spaces',
   '/qeb/tickets':     'qeb/tickets',
   '/qeb/reservas':    'qeb/reservas',
   '/qeb/campanas':    'qeb/campanas',
