@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Section } from '@/components/ui/Section'
 import { StatusBadge, type StatusKind } from '@/components/ui/StatusBadge'
+import { UnicodeSparkline } from '@/components/ui/UnicodeSparkline'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
@@ -36,6 +37,34 @@ interface Distribucion {
   count: number
 }
 
+interface TicketFull extends Ticket {
+  descripcion: string
+  imagen: string | null
+  respuesta: string | null
+  respondido_at: string | null
+  updated_at: string
+  status_cambiado_por: string | null
+  usuario_id: number
+}
+
+interface TicketMessage {
+  id: number
+  ticket_id: number
+  usuario_id: number
+  usuario_nombre: string
+  mensaje: string | null
+  archivo_url: string | null
+  archivo_nombre: string | null
+  archivo_tipo: string | null
+  created_at: string
+}
+
+interface TicketDetail {
+  ticket: TicketFull
+  mensajes: TicketMessage[]
+  chat: TicketMessage[]
+}
+
 const STATUS_STYLE: Record<string, { kind: StatusKind }> = {
   Nuevo:        { kind: 'warn' },
   'En proceso': { kind: 'info' },
@@ -67,9 +96,14 @@ function ageFrom(iso: string) {
   return `${Math.round(h / 24)}d`
 }
 
+function fmtTs(iso: string) {
+  return iso.replace('T', ' ').replace('Z', '').slice(0, 19)
+}
+
 export default function Tickets() {
   const [status, setStatus] = useState<StatusFilter>('todos')
   const [area, setArea] = useState<AreaFilter>('todas')
+  const [openId, setOpenId] = useState<number | null>(null)
 
   const statsQ = useQuery({
     queryKey: ['qeb', 'tickets', 'stats'],
@@ -126,7 +160,6 @@ export default function Tickets() {
         </div>
       )}
 
-      {/* KPI row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
           { label: 'total',            value: stats?.total,         accent: 'text-fg-primary' },
@@ -143,7 +176,6 @@ export default function Tickets() {
         ))}
       </div>
 
-      {/* Por área */}
       <Section title="por área" subtitle="TI atiende SAP y usuarios · QEB atiende todo lo demás">
         <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-3">
           <div className="rounded-md bg-bg-card border border-border-subtle px-4 py-3">
@@ -171,7 +203,6 @@ export default function Tickets() {
         </div>
       </Section>
 
-      {/* Distribucion por categoria */}
       <Section title="por categoría" subtitle="conteo histórico">
         <div className="mt-1">
           <div className="grid grid-cols-[1fr_60px_100px] gap-3 px-2 py-1 text-[11px] text-fg-faint uppercase tracking-wide">
@@ -203,10 +234,9 @@ export default function Tickets() {
         </div>
       </Section>
 
-      {/* Lista */}
       <Section
         title="tickets recientes"
-        subtitle="últimos 50 · orden por fecha de creación"
+        subtitle="ordenados por más recientes · click para ver detalle"
         right={
           <div className="flex flex-wrap items-center gap-1 text-[11px]">
             <span className="text-fg-faint">estado:</span>
@@ -263,8 +293,9 @@ export default function Tickets() {
                 return (
                   <div
                     key={t.id}
+                    onClick={() => setOpenId(t.id)}
                     className={cn(
-                      'grid grid-cols-[70px_1fr_180px_140px_60px_80px_100px_60px] gap-3 px-2 py-1.5 items-center hover:bg-white/[0.02] transition-colors',
+                      'grid grid-cols-[70px_1fr_180px_140px_60px_80px_100px_60px] gap-3 px-2 py-1.5 items-center hover:bg-white/[0.02] transition-colors cursor-pointer',
                       i !== 0 && 'border-t border-border-subtle',
                     )}
                   >
@@ -278,12 +309,8 @@ export default function Tickets() {
                       )}
                     </div>
                     <div className="min-w-0">
-                      <div className="text-fg-primary truncate text-[12px]">
-                        {t.usuario_nombre}
-                      </div>
-                      <div className="text-fg-muted truncate text-[10.5px]">
-                        {t.usuario_email}
-                      </div>
+                      <div className="text-fg-primary truncate text-[12px]">{t.usuario_nombre}</div>
+                      <div className="text-fg-muted truncate text-[10.5px]">{t.usuario_email}</div>
                     </div>
                     <span className="text-fg-secondary truncate text-[11.5px]">
                       {t.categoria ?? '—'}
@@ -291,12 +318,7 @@ export default function Tickets() {
                     <span className={cn('text-[11.5px]', AREA_COLOR[t.area] ?? 'text-fg-muted')}>
                       {t.area}
                     </span>
-                    <span
-                      className={cn(
-                        'text-[11.5px]',
-                        PRIORIDAD_TEXT[t.prioridad] ?? 'text-fg-muted',
-                      )}
-                    >
+                    <span className={cn('text-[11.5px]', PRIORIDAD_TEXT[t.prioridad] ?? 'text-fg-muted')}>
                       {t.prioridad}
                     </span>
                     <StatusBadge status={st.kind} label={t.status} />
@@ -312,6 +334,192 @@ export default function Tickets() {
           </div>
         </div>
       </Section>
+
+      {/* Sparkline decoration for consistency */}
+      <UnicodeSparkline data={[]} className="hidden" />
+
+      {openId && <TicketModal id={openId} onClose={() => setOpenId(null)} />}
+    </div>
+  )
+}
+
+function TicketModal({ id, onClose }: { id: number; onClose: () => void }) {
+  const detailQ = useQuery({
+    queryKey: ['qeb', 'tickets', 'detail', id],
+    queryFn: () => api.get<TicketDetail>(`/qeb/tickets/${id}`),
+    staleTime: 30_000,
+  })
+  const t = detailQ.data?.ticket
+  const mensajes = detailQ.data?.mensajes ?? []
+  const chat = detailQ.data?.chat ?? []
+  const totalMessages = mensajes.length + chat.length
+
+  return (
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-6"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-3xl max-h-[85vh] bg-bg-base border border-border-strong rounded-lg shadow-raised flex flex-col overflow-hidden"
+      >
+        <div className="flex items-center justify-between px-6 py-3 border-b border-border-subtle">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="text-brand-300 tabular-nums text-[15px]">#{id}</span>
+            {t && (
+              <>
+                <span className="text-fg-primary truncate text-[15px]">{t.titulo}</span>
+                <StatusBadge
+                  status={(STATUS_STYLE[t.status] ?? { kind: 'muted' as StatusKind }).kind}
+                  label={t.status}
+                />
+              </>
+            )}
+          </div>
+          <button
+            onClick={onClose}
+            className="text-fg-muted hover:text-fg-primary text-[18px] leading-none"
+            aria-label="cerrar"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-auto px-6 py-4 text-[13px] flex flex-col gap-4">
+          {detailQ.isLoading && (
+            <div className="text-fg-muted text-center py-8 animate-pulse">cargando…</div>
+          )}
+          {detailQ.isError && (
+            <div className="text-state-crit font-mono text-[12px] py-2">
+              [api] {(detailQ.error as Error).message}
+            </div>
+          )}
+          {t && (
+            <>
+              {/* Meta info */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <MetaTile label="área" value={t.area} accent={AREA_COLOR[t.area]} />
+                <MetaTile label="prioridad" value={t.prioridad} accent={PRIORIDAD_TEXT[t.prioridad]} />
+                <MetaTile label="categoría" value={t.categoria ?? '—'} />
+                <MetaTile label="creado" value={fmtTs(t.created_at)} />
+              </div>
+
+              {/* Usuario */}
+              <div className="rounded-md bg-bg-card border border-border-subtle px-4 py-3">
+                <div className="text-fg-faint text-[10.5px] uppercase tracking-wide mb-1">
+                  usuario que reportó
+                </div>
+                <div className="text-fg-primary">{t.usuario_nombre}</div>
+                <div className="text-fg-muted text-[11.5px]">{t.usuario_email}</div>
+              </div>
+
+              {/* Descripción */}
+              <div>
+                <div className="text-fg-faint text-[10.5px] uppercase tracking-wide mb-1">
+                  descripción
+                </div>
+                <div className="rounded-md bg-bg-inset border border-border-subtle px-3 py-2 text-fg-primary whitespace-pre-wrap break-words text-[12.5px]">
+                  {t.descripcion || '(sin descripción)'}
+                </div>
+              </div>
+
+              {/* Imagen adjunta si hay */}
+              {t.imagen && (
+                <div>
+                  <div className="text-fg-faint text-[10.5px] uppercase tracking-wide mb-1">
+                    imagen adjunta
+                  </div>
+                  {t.imagen.startsWith('data:') || t.imagen.startsWith('http') ? (
+                    <img
+                      src={t.imagen}
+                      alt="ticket"
+                      className="max-h-64 rounded border border-border-subtle"
+                    />
+                  ) : (
+                    <div className="text-fg-muted text-[11.5px]">
+                      [adjunto no visualizable · {t.imagen.length} chars]
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Respuesta oficial si existe */}
+              {t.respuesta && (
+                <div>
+                  <div className="text-fg-faint text-[10.5px] uppercase tracking-wide mb-1">
+                    respuesta oficial · por {t.respondido_por ?? '?'}
+                    {t.respondido_at && ` · ${fmtTs(t.respondido_at)}`}
+                  </div>
+                  <div className="rounded-md bg-state-okSoft border border-state-ok/20 px-3 py-2 text-fg-primary whitespace-pre-wrap break-words text-[12.5px]">
+                    {t.respuesta}
+                  </div>
+                </div>
+              )}
+
+              {/* Mensajes + chat */}
+              {totalMessages > 0 && (
+                <div>
+                  <div className="text-fg-faint text-[10.5px] uppercase tracking-wide mb-1">
+                    conversación · {totalMessages} mensajes
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    {[...mensajes, ...chat]
+                      .sort(
+                        (a, b) =>
+                          new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+                      )
+                      .map((m) => (
+                        <div
+                          key={`${m.id}-${m.created_at}`}
+                          className="rounded-md bg-bg-card border border-border-subtle px-3 py-2"
+                        >
+                          <div className="flex items-baseline justify-between mb-1">
+                            <span className="text-brand-300 text-[11.5px]">{m.usuario_nombre}</span>
+                            <span className="text-fg-muted tabular-nums text-[10.5px]">
+                              {fmtTs(m.created_at)}
+                            </span>
+                          </div>
+                          {m.mensaje && (
+                            <div className="text-fg-primary text-[12.5px] whitespace-pre-wrap break-words">
+                              {m.mensaje}
+                            </div>
+                          )}
+                          {m.archivo_url && (
+                            <a
+                              href={m.archivo_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-brand-400 hover:underline text-[11px] mt-1 inline-block"
+                            >
+                              📎 {m.archivo_nombre ?? 'archivo'} ↗
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function MetaTile({
+  label,
+  value,
+  accent,
+}: {
+  label: string
+  value: string
+  accent?: string
+}) {
+  return (
+    <div className="rounded-md bg-bg-card border border-border-subtle px-3 py-2">
+      <div className="text-fg-faint text-[10.5px] uppercase tracking-wide">{label}</div>
+      <div className={cn('mt-0.5 truncate text-[12.5px]', accent ?? 'text-fg-primary')}>{value}</div>
     </div>
   )
 }
