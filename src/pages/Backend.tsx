@@ -61,7 +61,11 @@ function fmtTs(iso: string) {
 }
 
 function isoDay(d: Date) {
-  return d.toISOString().slice(0, 10)
+  // Fecha LOCAL (no UTC) en formato YYYY-MM-DD para el date picker.
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
 }
 
 const LEVELS = ['todos', 'ERROR', 'WARN', 'INFO', 'DEBUG'] as const
@@ -263,16 +267,20 @@ function LogsViewer() {
   const esRef = useRef<EventSource | null>(null)
   const token = useAuth((s) => s.token)
 
-  const filters = useMemo(
-    () => ({
+  const filters = useMemo(() => {
+    // El date picker devuelve fechas en la zona local del usuario.
+    // Convertimos "YYYY-MM-DD" local a ISO UTC para que la query cubra
+    // ese día completo en su timezone.
+    const fromLocal = new Date(`${dayFrom}T00:00:00`)
+    const toLocal = new Date(`${dayTo}T23:59:59.999`)
+    return {
       level: level === 'todos' ? undefined : level,
       q: search || undefined,
-      from: `${dayFrom}T00:00:00.000Z`,
-      to: `${dayTo}T23:59:59.999Z`,
+      from: fromLocal.toISOString(),
+      to: toLocal.toISOString(),
       limit: 500,
-    }),
-    [level, search, dayFrom, dayTo],
-  )
+    }
+  }, [level, search, dayFrom, dayTo])
 
   const dbQ = useDbLogs(filters)
   const statsQ = useDbLogsStats()
@@ -488,9 +496,22 @@ function LogsViewer() {
         )}
         {!dbQ.isLoading && lines.length === 0 && !dbQ.isError && (
           <div className="text-fg-muted text-center py-4">
-            {statsQ.data && statsQ.data.total === 0
-              ? 'aún no hemos capturado logs. Activa "en vivo" arriba para que el back empiece a guardar.'
-              : 'sin resultados con estos filtros'}
+            {statsQ.data && statsQ.data.total === 0 ? (
+              'aún no hemos capturado logs. La captura arranca automáticamente al boot del back.'
+            ) : (
+              <div>
+                <div>sin resultados con estos filtros.</div>
+                {statsQ.data && (
+                  <div className="text-fg-faint text-[11px] mt-1">
+                    en total tenemos {statsQ.data.total.toLocaleString('es-MX')} líneas
+                    {statsQ.data.first_at && (
+                      <> capturadas desde {fmtTs(statsQ.data.first_at)} hasta {fmtTs(statsQ.data.last_at ?? '')} (UTC)</>
+                    )}
+                    . Prueba ampliar el rango de fechas o quitar filtros.
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
         {!dbQ.isLoading &&
