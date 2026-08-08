@@ -1,6 +1,15 @@
 import { Section } from '@/components/ui/Section'
 import { StatusBadge, type StatusKind } from '@/components/ui/StatusBadge'
-import { useDoAppInfo, useDoAppDeployments, type DoAppDeployment } from '@/lib/infraQueries'
+import { UnicodeSparkline } from '@/components/ui/UnicodeSparkline'
+import { useState } from 'react'
+import { Prompt } from '@/components/ui/Prompt'
+import {
+  useDoAppInfo,
+  useDoAppDeployments,
+  useDoAppMetrics,
+  useDoAppLogs,
+  type DoAppDeployment,
+} from '@/lib/infraQueries'
 import { cn } from '@/lib/utils'
 
 function phaseBadge(phase: string): { kind: StatusKind; label: string } {
@@ -36,12 +45,34 @@ function durationOf(d: DoAppDeployment): string {
   return `${Math.floor(s / 60)}m ${s % 60}s`
 }
 
+function colorForLine(raw: string): string {
+  const r = raw.toUpperCase()
+  if (r.includes('ERROR') || r.includes(' ERR ') || r.includes('EXCEPTION') || r.includes('ECONNREFUSED')) {
+    return 'text-state-crit'
+  }
+  if (r.includes('WARN')) return 'text-state-warn'
+  if (r.includes('[SOCKET]')) return 'text-state-info'
+  if (raw.match(/\s(4\d\d|5\d\d)\s/)) return 'text-state-warn'
+  if (raw.match(/\s(2\d\d|3\d\d)\s/)) return 'text-state-ok'
+  return 'text-fg-secondary'
+}
+
 export default function Backend() {
   const appQ = useDoAppInfo()
   const depQ = useDoAppDeployments()
+  const cpuQ = useDoAppMetrics('cpu_percentage')
+  const memQ = useDoAppMetrics('memory_percentage')
+  const logsQ = useDoAppLogs(300)
+  const [logSearch, setLogSearch] = useState('')
   const configured = appQ.data?.configured
   const app = appQ.data?.app
   const deployments = depQ.data?.deployments ?? []
+  const cpuSeries = cpuQ.data?.series?.[0]
+  const memSeries = memQ.data?.series?.[0]
+  const allLogs = logsQ.data?.lines ?? []
+  const filteredLogs = logSearch
+    ? allLogs.filter((l) => l.raw.toLowerCase().includes(logSearch.toLowerCase()))
+    : allLogs
 
   return (
     <div className="flex flex-col gap-6 text-[13px]">
@@ -180,15 +211,150 @@ export default function Backend() {
         </div>
       </Section>
 
-      {/* Métricas de CPU/RAM/logs — más profundo */}
+      {/* Métricas CPU y RAM del app */}
       <Section
-        title="cpu / ram / logs / errores"
-        subtitle="requiere DO metrics API + log forwarder desde el droplet"
+        title="cpu / memoria del app"
+        subtitle="digitalocean monitoring · última hora"
+        right={
+          <span className="text-fg-muted text-[11px]">
+            {cpuSeries && `componente: ${cpuSeries.component}`}
+          </span>
+        }
       >
-        <div className="mt-2 rounded-md bg-bg-inset border border-brand-500/30 px-3 py-2 text-[12px] text-brand-300 font-mono">
-          [pendiente] endpoints DO metrics + un forwarder que empuje logs de qeb-back a la tabla monitor_logs. Requiere trabajo del lado del droplet de QEB (Mario).
+        {(cpuQ.isLoading || memQ.isLoading) && (
+          <div className="text-fg-muted text-center py-3 animate-pulse">cargando…</div>
+        )}
+        {(cpuQ.data?.error || memQ.data?.error) && (
+          <div className="text-state-crit font-mono text-[12px] py-2">
+            [api] {cpuQ.data?.error ?? memQ.data?.error}
+          </div>
+        )}
+        {cpuSeries && memSeries && (
+          <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-3">
+            <MetricWithSpark
+              label="CPU · última hora"
+              latest={cpuSeries.latest}
+              avg={cpuSeries.avg}
+              peak={cpuSeries.peak}
+              unit="%"
+              points={cpuSeries.points.map((p) => p.value)}
+              color="#9ECE6A"
+            />
+            <MetricWithSpark
+              label="Memoria · última hora"
+              latest={memSeries.latest}
+              avg={memSeries.avg}
+              peak={memSeries.peak}
+              unit="%"
+              points={memSeries.points.map((p) => p.value)}
+              color="#7DCFFF"
+            />
+          </div>
+        )}
+      </Section>
+
+      {/* Runtime Logs · datos reales de DO */}
+      <Section
+        title="runtime logs"
+        subtitle="digitalocean apps · últimas ~300 líneas · auto-refresh 30s"
+        right={
+          <div className="flex items-center gap-2 text-[11px]">
+            <input
+              type="text"
+              value={logSearch}
+              onChange={(e) => setLogSearch(e.target.value)}
+              placeholder="grep..."
+              className="bg-bg-card border border-border-subtle rounded px-2 h-6 text-fg-secondary outline-none focus:border-brand-500/50 min-w-[160px]"
+            />
+            <span className="text-fg-muted tabular-nums">
+              {filteredLogs.length}/{allLogs.length}
+            </span>
+            <button
+              onClick={() => logsQ.refetch()}
+              disabled={logsQ.isFetching}
+              className="px-2 h-6 rounded border border-border-subtle text-fg-muted hover:text-fg-primary disabled:opacity-50"
+            >
+              {logsQ.isFetching ? '…' : 'actualizar'}
+            </button>
+          </div>
+        }
+      >
+        <div className="mt-2 rounded-md bg-bg-inset border border-border-subtle px-3 py-2 font-mono text-[12px] max-h-[560px] overflow-auto">
+          {logsQ.isLoading && (
+            <div className="text-fg-muted text-center py-4 animate-pulse">cargando logs…</div>
+          )}
+          {logsQ.data?.error && (
+            <div className="text-state-crit py-2">[api] {logsQ.data.error}</div>
+          )}
+          {!logsQ.isLoading &&
+            filteredLogs.map((l, i) => (
+              <div
+                key={i}
+                className="grid grid-cols-[160px_1fr] gap-3 py-0.5 px-1 -mx-1 rounded hover:bg-white/[0.02]"
+              >
+                <span className="text-fg-muted tabular-nums text-[11px] truncate">
+                  {l.ts ? l.ts.replace('T', ' ').replace('Z', '').slice(0, 19) : '—'}
+                </span>
+                <span className={cn('whitespace-pre-wrap break-words', colorForLine(l.raw))}>
+                  {l.raw}
+                </span>
+              </div>
+            ))}
+          {!logsQ.isLoading && filteredLogs.length === 0 && (
+            <div className="text-fg-muted text-center py-3">
+              {allLogs.length === 0 ? 'sin logs disponibles' : 'sin coincidencias'}
+            </div>
+          )}
+          <div className="mt-2">
+            <Prompt />
+          </div>
         </div>
       </Section>
+    </div>
+  )
+}
+
+function MetricWithSpark({
+  label,
+  latest,
+  avg,
+  peak,
+  unit,
+  points,
+  color,
+}: {
+  label: string
+  latest: number | null
+  avg: number | null
+  peak: number | null
+  unit: string
+  points: number[]
+  color: string
+}) {
+  const status =
+    latest == null ? 'muted' : latest >= 80 ? 'crit' : latest >= 60 ? 'warn' : 'ok'
+  const accentClass =
+    status === 'crit' ? 'text-state-crit' :
+    status === 'warn' ? 'text-state-warn' :
+    'text-state-ok'
+  return (
+    <div className="rounded-md bg-bg-card border border-border-subtle px-4 py-3">
+      <div className="text-fg-faint text-[10.5px] uppercase tracking-wide">{label}</div>
+      <div className="flex items-baseline gap-3 mt-1">
+        <span className={cn('tabular-nums text-[26px]', accentClass)}>
+          {latest != null ? latest.toFixed(1) : '—'}
+        </span>
+        <span className="text-fg-muted text-[13px]">{unit}</span>
+      </div>
+      <div className="text-fg-muted text-[11px] mt-1 flex gap-3">
+        <span>avg {avg != null ? avg.toFixed(1) : '—'}{unit}</span>
+        <span>pico {peak != null ? peak.toFixed(1) : '—'}{unit}</span>
+      </div>
+      {points.length > 0 && (
+        <div className="mt-2">
+          <UnicodeSparkline data={points} color={color} className="text-[14px]" />
+        </div>
+      )}
     </div>
   )
 }

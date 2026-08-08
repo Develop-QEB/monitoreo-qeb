@@ -98,6 +98,54 @@ export function useDoAppDeployments() {
   })
 }
 
+export interface AppMetricSeries {
+  component: string
+  points: { ts: number; value: number }[]
+  latest: number | null
+  avg: number | null
+  peak: number | null
+}
+
+interface AppMetricsResp {
+  configured: boolean
+  reason?: string
+  error?: string
+  metric?: string
+  hours?: number
+  series?: AppMetricSeries[]
+}
+
+export function useDoAppMetrics(metric: 'cpu_percentage' | 'memory_percentage' | 'restart_count') {
+  return useQuery({
+    queryKey: ['infra', 'do', 'app', 'metrics', metric],
+    queryFn: () => api.get<AppMetricsResp>(`/infra/do/app/metrics?metric=${metric}&hours=1`),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  })
+}
+
+export interface AppLogLine {
+  ts: string | null
+  raw: string
+}
+
+interface AppLogsResp {
+  configured: boolean
+  reason?: string
+  error?: string
+  count?: number
+  lines?: AppLogLine[]
+}
+
+export function useDoAppLogs(maxLines = 300) {
+  return useQuery({
+    queryKey: ['infra', 'do', 'app', 'logs', maxLines],
+    queryFn: () => api.get<AppLogsResp>(`/infra/do/app/logs?max=${maxLines}`),
+    staleTime: 20_000,
+    refetchInterval: 30_000,
+  })
+}
+
 // ------- DO Databases -------
 
 interface DoDbResp {
