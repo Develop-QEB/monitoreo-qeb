@@ -92,9 +92,12 @@ export function useToggleActive() {
 export function useResetPassword() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (id: string) => {
-      const res = await api.post<{ ok: true; newPassword: string }>(`/users/${id}/reset-password`)
-      return res.newPassword
+    mutationFn: async ({ id, password }: { id: string; password?: string }) => {
+      const res = await api.post<{ ok: true; generated: boolean; newPassword?: string }>(
+        `/users/${id}/reset-password`,
+        password ? { password } : undefined,
+      )
+      return { generated: res.generated, newPassword: res.newPassword }
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['audit'] }),
   })

@@ -40,6 +40,8 @@ export default function Users() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editForm, setEditForm] = useState({ name: '', email: '', role: 'ti' as Role })
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [resettingPwId, setResettingPwId] = useState<string | null>(null)
+  const [manualPassword, setManualPassword] = useState('')
 
   const users = usersQ.data ?? []
 
@@ -127,10 +129,36 @@ export default function Users() {
     }
   }
 
-  async function handleReset(u: AdminUser) {
+  function openResetPw(u: AdminUser) {
+    setResettingPwId(u.id)
+    setManualPassword('')
+    setEditingId(null)
+    setConfirmDeleteId(null)
+  }
+
+  async function handleResetRandom(u: AdminUser) {
     try {
-      const pw = await resetPwM.mutateAsync(u.id)
-      showFlash(`nueva contraseña de ${u.email}: ${pw}  (se muestra una sola vez)`, 10_000)
+      const res = await resetPwM.mutateAsync({ id: u.id })
+      showFlash(
+        `nueva contraseña de ${u.email}: ${res.newPassword}  (se muestra una sola vez)`,
+        10_000,
+      )
+      setResettingPwId(null)
+    } catch (err) {
+      showFlash(`[error] ${(err as Error).message}`)
+    }
+  }
+
+  async function handleResetManual(u: AdminUser) {
+    if (manualPassword.length < 6) {
+      showFlash('[error] la contraseña debe tener al menos 6 caracteres')
+      return
+    }
+    try {
+      await resetPwM.mutateAsync({ id: u.id, password: manualPassword })
+      showFlash(`contraseña de ${u.email} actualizada`)
+      setResettingPwId(null)
+      setManualPassword('')
     } catch (err) {
       showFlash(`[error] ${(err as Error).message}`)
     }
@@ -404,11 +432,11 @@ export default function Users() {
                               editar
                             </button>
                             <button
-                              onClick={() => handleReset(u)}
+                              onClick={() => openResetPw(u)}
                               disabled={resetPwM.isPending}
                               className="text-fg-secondary hover:text-fg-primary hover:underline disabled:opacity-50"
                             >
-                              reset-pw
+                              contraseña
                             </button>
                             <button
                               onClick={() => handleToggle(u)}
@@ -432,6 +460,45 @@ export default function Users() {
                         )}
                       </span>
                     </div>
+                    {resettingPwId === u.id && !isEditing && (
+                      <div className="px-4 pb-3 bg-white/[0.02] border-l-2 border-brand-500/60">
+                        <div className="flex flex-wrap items-center gap-3 py-2 text-[12px]">
+                          <span className="text-fg-secondary shrink-0">
+                            contraseña de <span className="text-fg-primary">{u.email}</span>:
+                          </span>
+                          <input
+                            type="text"
+                            value={manualPassword}
+                            onChange={(e) => setManualPassword(e.target.value)}
+                            placeholder="escribe una nueva (mín 6 chars)"
+                            className="bg-bg-card border border-border-subtle rounded px-2 h-7 text-fg-primary outline-none focus:border-brand-500/60 min-w-[240px] text-[12px]"
+                          />
+                          <div className="flex items-center gap-2 text-[11px]">
+                            <button
+                              onClick={() => handleResetManual(u)}
+                              disabled={resetPwM.isPending || manualPassword.length < 6}
+                              className="px-2 h-6 rounded bg-brand-500/20 border border-brand-500/60 text-brand-300 hover:bg-brand-500/30 disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              guardar manual
+                            </button>
+                            <span className="text-fg-faint">o</span>
+                            <button
+                              onClick={() => handleResetRandom(u)}
+                              disabled={resetPwM.isPending}
+                              className="px-2 h-6 rounded border border-border-subtle text-fg-secondary hover:text-fg-primary disabled:opacity-50"
+                            >
+                              generar aleatoria
+                            </button>
+                            <button
+                              onClick={() => setResettingPwId(null)}
+                              className="px-2 h-6 rounded border border-border-subtle text-fg-muted hover:text-fg-primary ml-2"
+                            >
+                              cancelar
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     {isConfirmingDelete && !isEditing && (
                       <div className="px-4 pb-3 bg-state-critSoft border-l-2 border-state-crit">
                         <div className="flex items-center justify-between gap-4 py-2 text-[12px]">
