@@ -1,13 +1,32 @@
+import { useQuery } from '@tanstack/react-query'
 import { Section } from '@/components/ui/Section'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { useDoDbCluster } from '@/lib/infraQueries'
+import { api } from '@/lib/api'
+import { cn } from '@/lib/utils'
 
 function formatIso(iso: string) {
   return iso.replace('T', ' ').slice(0, 19)
 }
 
+interface IndicesResp {
+  expected: number
+  found: number
+  allPresent: boolean
+  indexes: { table: string; name: string; present: boolean }[]
+}
+
+function useIndicesCriticos() {
+  return useQuery({
+    queryKey: ['qeb', 'indices'],
+    queryFn: () => api.get<IndicesResp>('/qeb/indices'),
+    staleTime: 5 * 60_000,
+  })
+}
+
 export default function Database() {
   const dbQ = useDoDbCluster()
+  const indicesQ = useIndicesCriticos()
   const configured = dbQ.data?.configured
   const cluster = dbQ.data?.cluster
 
@@ -35,7 +54,7 @@ export default function Database() {
 
       {!dbQ.isLoading && configured === false && (
         <div className="rounded-md bg-bg-inset border border-brand-500/30 px-3 py-2 text-[12px] text-brand-300 font-mono">
-          [pendiente] configura en Render → Environment: <span className="text-fg-primary">DO_API_TOKEN</span> y <span className="text-fg-primary">DO_DB_CLUSTER_ID</span> (UUID del cluster qeb-mysql-prod, lo sacas de la URL del cluster en el panel de DO).
+          [pendiente] configura en Render → Environment: <span className="text-fg-primary">DO_API_TOKEN</span> y <span className="text-fg-primary">DO_DB_CLUSTER_ID</span> (UUID del cluster qeb-mysql-prod).
         </div>
       )}
 
@@ -67,13 +86,62 @@ export default function Database() {
         </Section>
       )}
 
+      {/* Índices críticos — funcional con monitor_readonly */}
+      <Section
+        title="índices críticos"
+        subtitle="verificación estática · SHOW INDEX contra u658050396_QEB"
+        right={
+          indicesQ.data && (
+            <StatusBadge
+              status={indicesQ.data.allPresent ? 'ok' : 'crit'}
+              label={`${indicesQ.data.found} / ${indicesQ.data.expected} presentes`}
+            />
+          )
+        }
+      >
+        <div className="mt-1">
+          <div className="grid grid-cols-[70px_160px_1fr] gap-3 px-2 py-1 text-[11px] text-fg-faint uppercase tracking-wide">
+            <span>estado</span>
+            <span>tabla</span>
+            <span>índice</span>
+          </div>
+          <div className="border-t border-border-subtle">
+            {indicesQ.isLoading && (
+              <div className="text-fg-muted text-center py-4 animate-pulse">cargando…</div>
+            )}
+            {indicesQ.isError && (
+              <div className="text-state-crit text-center py-4 font-mono text-[12px]">
+                [api] {(indicesQ.error as Error).message}
+              </div>
+            )}
+            {!indicesQ.isLoading &&
+              indicesQ.data?.indexes.map((idx, i) => (
+                <div
+                  key={idx.name}
+                  className={cn(
+                    'grid grid-cols-[70px_160px_1fr] gap-3 px-2 py-1.5 items-center hover:bg-white/[0.02] transition-colors',
+                    i !== 0 && 'border-t border-border-subtle',
+                  )}
+                >
+                  <StatusBadge
+                    status={idx.present ? 'ok' : 'crit'}
+                    label={idx.present ? 'ok' : 'faltante'}
+                  />
+                  <span className="text-brand-300">{idx.table}</span>
+                  <span className="text-fg-primary font-mono text-[12.5px]">{idx.name}</span>
+                </div>
+              ))}
+          </div>
+        </div>
+      </Section>
+
       {/* Métricas CPU/RAM/disco */}
       <Section
         title="cpu / ram / disco"
         subtitle="requiere endpoints de DO monitoring/metrics"
       >
         <div className="mt-2 rounded-md bg-bg-inset border border-brand-500/30 px-3 py-2 text-[12px] text-brand-300 font-mono">
-          [pendiente] `/v2/monitoring/metrics/database/cpu`, `/memory`, `/disk`. Requieren time range y devuelven arrays de datapoints — hay que graficarlos con recharts.
+          [pendiente] `/v2/monitoring/metrics/database/*` devuelve arrays de datapoints por tiempo. Requiere graficar con recharts.
         </div>
       </Section>
 
@@ -83,17 +151,7 @@ export default function Database() {
         subtitle="requiere habilitar slow_query_log en el cluster"
       >
         <div className="mt-2 rounded-md bg-bg-inset border border-brand-500/30 px-3 py-2 text-[12px] text-brand-300 font-mono">
-          [pendiente] Mario/DO debe habilitar `slow_query_log = ON` y `long_query_time = 1` en los MySQL parameters del cluster. Luego el back del monitor puede leer `mysql.slow_log` desde la DB con `monitor_readonly`.
-        </div>
-      </Section>
-
-      {/* Índices críticos verificables desde monitor_readonly */}
-      <Section
-        title="índices críticos"
-        subtitle="verificación estática · consulta SHOW INDEX contra u658050396_QEB"
-      >
-        <div className="mt-2 rounded-md bg-bg-inset border border-brand-500/30 px-3 py-2 text-[12px] text-brand-300 font-mono">
-          [pendiente] endpoint que hace SHOW INDEX FROM inventarios / reservas / campania y valida los 7 índices críticos definidos en add_idx_dashboard_perf. Se puede implementar sin token de DO — solo con `monitor_readonly` que ya tenemos.
+          [pendiente] Mario/DO debe habilitar `slow_query_log = ON` y `long_query_time = 1` en los MySQL parameters del cluster. Luego el back puede leer `mysql.slow_log` con `monitor_readonly`.
         </div>
       </Section>
     </div>
