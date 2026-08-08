@@ -305,15 +305,6 @@ export default function Database() {
         </div>
       </Section>
 
-      {/* Slow queries — sigue requiriendo config en el cluster */}
-      <Section
-        title="queries pesadas"
-        subtitle="requiere habilitar slow_query_log en el cluster"
-      >
-        <div className="mt-2 rounded-md bg-bg-inset border border-brand-500/30 px-3 py-2 text-[12px] text-brand-300 font-mono">
-          [pendiente] Mario/DO debe habilitar <span className="text-fg-primary">slow_query_log = ON</span> y <span className="text-fg-primary">long_query_time = 1</span> en los MySQL parameters del cluster (Settings → Configuration en el panel de DO). Cuando esté habilitado, agregamos endpoint para leer <span className="text-fg-primary">mysql.slow_log</span> con monitor_readonly.
-        </div>
-      </Section>
     </div>
   )
 }

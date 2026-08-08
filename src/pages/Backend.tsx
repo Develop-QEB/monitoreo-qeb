@@ -413,53 +413,11 @@ function LogsViewer() {
         </div>
       )}
 
-      {/* Info sobre captura 24/7 y sleep de Render */}
-      {captureQ.data && (
-        <div
-          className={cn(
-            'mt-2 rounded-md border px-3 py-2 text-[11.5px] font-mono',
-            captureQ.data.running
-              ? 'bg-state-okSoft border-state-ok/30 text-state-ok'
-              : 'bg-bg-inset border-brand-500/30 text-brand-300',
-          )}
-        >
-          {captureQ.data.running ? (
-            <>
-              [ok] el back está capturando 24/7 cada línea de qeb-back → monitor_logs.
-              {captureQ.data.startedAt && (
-                <span className="text-fg-muted"> arrancó a las {fmtTs(captureQ.data.startedAt)}</span>
-              )}
-              {captureQ.data.restartCount > 0 && (
-                <span className="text-fg-muted"> · {captureQ.data.restartCount} reinicios</span>
-              )}
-              . Render Free se duerme tras 15min sin tráfico — para 24/7 real, configura un ping externo a{' '}
-              <a
-                href="https://uptimerobot.com"
-                target="_blank"
-                rel="noreferrer"
-                className="underline"
-              >
-                uptimerobot.com
-              </a>{' '}
-              o{' '}
-              <a
-                href="https://cron-job.org"
-                target="_blank"
-                rel="noreferrer"
-                className="underline"
-              >
-                cron-job.org
-              </a>{' '}
-              contra <span className="text-fg-primary">https://monitoreo-qeb-back.onrender.com/health</span> cada 5-10 min.
-            </>
-          ) : (
-            <>
-              [aviso] captura detenida.{' '}
-              {captureQ.data.lastError && (
-                <span>último error: {captureQ.data.lastError}</span>
-              )}
-            </>
-          )}
+      {/* Estado compacto de la captura */}
+      {captureQ.data && !captureQ.data.running && (
+        <div className="mt-2 rounded-md bg-bg-inset border border-state-crit/30 px-3 py-2 text-[11.5px] text-state-crit font-mono">
+          [aviso] captura detenida.
+          {captureQ.data.lastError && <span> último error: {captureQ.data.lastError}</span>}
         </div>
       )}
 
