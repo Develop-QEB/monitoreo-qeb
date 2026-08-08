@@ -5,9 +5,12 @@ import {
   useUsersQuery,
   useCreateUser,
   useUpdateRole,
+  useUpdateUser,
   useToggleActive,
   useResetPassword,
+  useDeleteUser,
 } from '@/lib/queries'
+import { useAuth } from '@/stores/authStore'
 import { ROLE_LABEL, type Role } from '@/lib/roles'
 import type { AdminUser } from '@/types/api'
 import { cn } from '@/lib/utils'
@@ -20,17 +23,23 @@ const ROLE_COLOR: Record<Role, string> = {
 }
 
 export default function Users() {
+  const currentEmail = useAuth((s) => s.user?.email ?? '')
   const usersQ = useUsersQuery()
   const createM = useCreateUser()
   const updateRoleM = useUpdateRole()
+  const updateUserM = useUpdateUser()
   const toggleActiveM = useToggleActive()
   const resetPwM = useResetPassword()
+  const deleteM = useDeleteUser()
 
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ name: '', email: '', password: '', role: 'ti' as Role })
   const [flash, setFlash] = useState<string | null>(null)
   const [filterRole, setFilterRole] = useState<'todos' | Role>('todos')
   const [search, setSearch] = useState('')
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState({ name: '', email: '', role: 'ti' as Role })
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   const users = usersQ.data ?? []
 
@@ -73,6 +82,34 @@ export default function Users() {
     }
   }
 
+  function startEdit(u: AdminUser) {
+    setEditingId(u.id)
+    setEditForm({ name: u.name, email: u.email, role: u.role })
+    setConfirmDeleteId(null)
+  }
+
+  function cancelEdit() {
+    setEditingId(null)
+  }
+
+  async function saveEdit(u: AdminUser) {
+    try {
+      const patch: { name?: string; email?: string; role?: Role } = {}
+      if (editForm.name && editForm.name !== u.name) patch.name = editForm.name
+      if (editForm.email && editForm.email !== u.email) patch.email = editForm.email
+      if (editForm.role !== u.role) patch.role = editForm.role
+      if (Object.keys(patch).length === 0) {
+        setEditingId(null)
+        return
+      }
+      await updateUserM.mutateAsync({ id: u.id, patch })
+      showFlash(`usuario ${u.email} actualizado`)
+      setEditingId(null)
+    } catch (err) {
+      showFlash(`[error] ${(err as Error).message}`)
+    }
+  }
+
   async function handleRole(u: AdminUser, role: Role) {
     if (u.role === role) return
     try {
@@ -94,6 +131,16 @@ export default function Users() {
     try {
       const pw = await resetPwM.mutateAsync(u.id)
       showFlash(`nueva contraseña de ${u.email}: ${pw}  (se muestra una sola vez)`, 10_000)
+    } catch (err) {
+      showFlash(`[error] ${(err as Error).message}`)
+    }
+  }
+
+  async function handleDelete(u: AdminUser) {
+    try {
+      await deleteM.mutateAsync(u.id)
+      showFlash(`usuario ${u.email} borrado en firme`)
+      setConfirmDeleteId(null)
     } catch (err) {
       showFlash(`[error] ${(err as Error).message}`)
     }
@@ -149,7 +196,7 @@ export default function Users() {
 
       <Section
         title="usuarios"
-        subtitle="tabla · los cambios se registran automáticamente en la bitácora"
+        subtitle="los cambios se registran en la bitácora · borrado es permanente"
         right={
           <div className="flex items-center gap-2 text-[11px]">
             <span className="text-fg-faint">rol:</span>
@@ -242,7 +289,7 @@ export default function Users() {
         )}
 
         <div className="mt-1">
-          <div className="grid grid-cols-[60px_140px_1fr_140px_100px_100px_180px] gap-3 px-2 py-1 text-[11px] text-fg-faint uppercase tracking-wide">
+          <div className="grid grid-cols-[60px_140px_1fr_140px_100px_100px_260px] gap-3 px-2 py-1 text-[11px] text-fg-faint uppercase tracking-wide">
             <span>estado</span>
             <span>nombre</span>
             <span>email</span>
@@ -256,62 +303,162 @@ export default function Users() {
               <div className="text-fg-muted text-center py-6 animate-pulse">cargando…</div>
             )}
             {!usersQ.isLoading &&
-              filtered.map((u, i) => (
-                <div
-                  key={u.id}
-                  className={cn(
-                    'grid grid-cols-[60px_140px_1fr_140px_100px_100px_180px] gap-3 px-2 py-1.5 items-center hover:bg-white/[0.02] transition-colors',
-                    i !== 0 && 'border-t border-border-subtle',
-                    !u.active && 'opacity-50',
-                  )}
-                >
-                  <StatusBadge
-                    status={u.active ? 'ok' : 'muted'}
-                    label={u.active ? 'activo' : 'off'}
-                  />
-                  <span className="text-fg-primary truncate">{u.name}</span>
-                  <span className="text-fg-secondary truncate">{u.email}</span>
-                  <select
-                    value={u.role}
-                    onChange={(e) => handleRole(u, e.target.value as Role)}
-                    className={cn(
-                      'bg-transparent border border-transparent hover:border-border-subtle rounded px-1 h-6 text-[12px] outline-none focus:border-brand-500/60 cursor-pointer',
-                      ROLE_COLOR[u.role],
-                    )}
-                  >
-                    {ROLES.map((r) => (
-                      <option key={r} value={r} className="bg-bg-card text-fg-primary">
-                        {ROLE_LABEL[r]}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="text-fg-muted tabular-nums text-[11.5px]">
-                    {u.createdAt.slice(0, 10)}
-                  </span>
-                  <span className="text-fg-muted tabular-nums text-[11.5px]">
-                    {u.lastLoginAt ? u.lastLoginAt.slice(0, 10) : '—'}
-                  </span>
-                  <span className="text-right flex items-center justify-end gap-2 text-[11px]">
-                    <button
-                      onClick={() => handleReset(u)}
-                      disabled={resetPwM.isPending}
-                      className="text-brand-400 hover:underline disabled:opacity-50"
-                    >
-                      resetear
-                    </button>
-                    <button
-                      onClick={() => handleToggle(u)}
-                      disabled={toggleActiveM.isPending}
+              filtered.map((u, i) => {
+                const isEditing = editingId === u.id
+                const isConfirmingDelete = confirmDeleteId === u.id
+                const isSelf = u.email.toLowerCase() === currentEmail.toLowerCase()
+                return (
+                  <div key={u.id} className={cn(i !== 0 && 'border-t border-border-subtle')}>
+                    <div
                       className={cn(
-                        'hover:underline disabled:opacity-50',
-                        u.active ? 'text-state-warn' : 'text-state-ok',
+                        'grid grid-cols-[60px_140px_1fr_140px_100px_100px_260px] gap-3 px-2 py-1.5 items-center hover:bg-white/[0.02] transition-colors',
+                        !u.active && 'opacity-50',
+                        isEditing && 'bg-white/[0.03]',
                       )}
                     >
-                      {u.active ? 'deshabilitar' : 'habilitar'}
-                    </button>
-                  </span>
-                </div>
-              ))}
+                      <StatusBadge
+                        status={u.active ? 'ok' : 'muted'}
+                        label={u.active ? 'activo' : 'off'}
+                      />
+                      {isEditing ? (
+                        <input
+                          value={editForm.name}
+                          onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                          className="bg-bg-card border border-brand-500/40 rounded px-1.5 h-6 text-fg-primary outline-none text-[12px]"
+                        />
+                      ) : (
+                        <span className="text-fg-primary truncate">{u.name}</span>
+                      )}
+                      {isEditing ? (
+                        <input
+                          type="email"
+                          value={editForm.email}
+                          onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                          className="bg-bg-card border border-brand-500/40 rounded px-1.5 h-6 text-fg-primary outline-none text-[12px]"
+                        />
+                      ) : (
+                        <span className="text-fg-secondary truncate">{u.email}</span>
+                      )}
+                      {isEditing ? (
+                        <select
+                          value={editForm.role}
+                          onChange={(e) =>
+                            setEditForm({ ...editForm, role: e.target.value as Role })
+                          }
+                          className={cn(
+                            'bg-bg-card border border-brand-500/40 rounded px-1 h-6 text-[12px] outline-none',
+                            ROLE_COLOR[editForm.role],
+                          )}
+                        >
+                          {ROLES.map((r) => (
+                            <option key={r} value={r} className="bg-bg-card text-fg-primary">
+                              {ROLE_LABEL[r]}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <select
+                          value={u.role}
+                          onChange={(e) => handleRole(u, e.target.value as Role)}
+                          className={cn(
+                            'bg-transparent border border-transparent hover:border-border-subtle rounded px-1 h-6 text-[12px] outline-none focus:border-brand-500/60 cursor-pointer',
+                            ROLE_COLOR[u.role],
+                          )}
+                        >
+                          {ROLES.map((r) => (
+                            <option key={r} value={r} className="bg-bg-card text-fg-primary">
+                              {ROLE_LABEL[r]}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      <span className="text-fg-muted tabular-nums text-[11.5px]">
+                        {u.createdAt.slice(0, 10)}
+                      </span>
+                      <span className="text-fg-muted tabular-nums text-[11.5px]">
+                        {u.lastLoginAt ? u.lastLoginAt.slice(0, 10) : '—'}
+                      </span>
+                      <span className="text-right flex items-center justify-end gap-2 text-[11px]">
+                        {isEditing ? (
+                          <>
+                            <button
+                              onClick={() => saveEdit(u)}
+                              disabled={updateUserM.isPending}
+                              className="text-state-ok hover:underline disabled:opacity-50"
+                            >
+                              guardar
+                            </button>
+                            <button
+                              onClick={cancelEdit}
+                              className="text-fg-muted hover:underline"
+                            >
+                              cancelar
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => startEdit(u)}
+                              className="text-brand-400 hover:underline"
+                            >
+                              editar
+                            </button>
+                            <button
+                              onClick={() => handleReset(u)}
+                              disabled={resetPwM.isPending}
+                              className="text-fg-secondary hover:text-fg-primary hover:underline disabled:opacity-50"
+                            >
+                              reset-pw
+                            </button>
+                            <button
+                              onClick={() => handleToggle(u)}
+                              disabled={toggleActiveM.isPending}
+                              className={cn(
+                                'hover:underline disabled:opacity-50',
+                                u.active ? 'text-state-warn' : 'text-state-ok',
+                              )}
+                            >
+                              {u.active ? 'deshab' : 'habilit'}
+                            </button>
+                            <button
+                              onClick={() => setConfirmDeleteId(u.id)}
+                              disabled={isSelf || deleteM.isPending}
+                              title={isSelf ? 'no puedes borrar tu propia cuenta' : 'borrar en firme'}
+                              className="text-state-crit hover:underline disabled:opacity-30 disabled:cursor-not-allowed"
+                            >
+                              borrar
+                            </button>
+                          </>
+                        )}
+                      </span>
+                    </div>
+                    {isConfirmingDelete && !isEditing && (
+                      <div className="px-4 pb-3 bg-state-critSoft border-l-2 border-state-crit">
+                        <div className="flex items-center justify-between gap-4 py-2 text-[12px]">
+                          <span className="text-state-crit">
+                            [confirmar] borrar en firme a <span className="font-semibold">{u.email}</span>?  esto no se puede deshacer.
+                          </span>
+                          <div className="flex items-center gap-2 text-[11px]">
+                            <button
+                              onClick={() => handleDelete(u)}
+                              disabled={deleteM.isPending}
+                              className="px-2 h-6 rounded bg-state-crit/20 border border-state-crit/60 text-state-crit hover:bg-state-crit/30 disabled:opacity-50"
+                            >
+                              {deleteM.isPending ? '...' : 'sí, borrar'}
+                            </button>
+                            <button
+                              onClick={() => setConfirmDeleteId(null)}
+                              className="px-2 h-6 rounded border border-border-subtle text-fg-muted hover:text-fg-primary"
+                            >
+                              cancelar
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             {!usersQ.isLoading && filtered.length === 0 && !usersQ.isError && (
               <div className="text-fg-muted text-center py-4">sin resultados</div>
             )}

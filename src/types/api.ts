@@ -16,6 +16,7 @@ export type AuditAction =
   | 'auth.logout'
   | 'user.create'
   | 'user.update'
+  | 'user.delete'
   | 'user.role_change'
   | 'user.disable'
   | 'user.enable'

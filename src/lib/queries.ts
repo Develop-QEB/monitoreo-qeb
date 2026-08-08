@@ -41,6 +41,40 @@ export function useUpdateRole() {
   })
 }
 
+export function useUpdateUser() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      id,
+      patch,
+    }: {
+      id: string
+      patch: { name?: string; email?: string; role?: Role }
+    }) => {
+      const res = await api.patch<{ user: AdminUser }>(`/users/${id}`, patch)
+      return res.user
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['users'] })
+      qc.invalidateQueries({ queryKey: ['audit'] })
+    },
+  })
+}
+
+export function useDeleteUser() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete<{ ok: true }>(`/users/${id}`)
+      return id
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['users'] })
+      qc.invalidateQueries({ queryKey: ['audit'] })
+    },
+  })
+}
+
 export function useToggleActive() {
   const qc = useQueryClient()
   return useMutation({

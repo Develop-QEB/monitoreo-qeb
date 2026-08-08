@@ -21,25 +21,28 @@ export function Section({
   const [open, setOpen] = useState(defaultOpen)
   return (
     <section className={cn('flex flex-col', className)}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="group flex items-center gap-2 py-1.5 text-left"
-      >
-        <span
-          className={cn(
-            'text-[11px] text-fg-muted transition-transform',
-            open ? '' : '-rotate-90',
-          )}
+      <div className="flex items-center gap-2 py-1.5">
+        {/* Solo el título es clickable para toggle. Los controles del `right` viven fuera del botón. */}
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="group flex items-center gap-2 text-left min-w-0 shrink-0"
         >
-          ▾
-        </span>
-        <span className="text-[12.5px] font-medium text-fg-primary">{title}</span>
-        {subtitle && (
-          <span className="text-[11.5px] text-fg-muted">— {subtitle}</span>
-        )}
+          <span
+            className={cn(
+              'text-[11px] text-fg-muted transition-transform',
+              open ? '' : '-rotate-90',
+            )}
+          >
+            ▾
+          </span>
+          <span className="text-[12.5px] font-medium text-fg-primary">{title}</span>
+          {subtitle && (
+            <span className="text-[11.5px] text-fg-muted">— {subtitle}</span>
+          )}
+        </button>
         {right && <div className="ml-auto">{right}</div>}
-      </button>
+      </div>
       {open && <div className="pl-4 mt-1">{children}</div>}
     </section>
   )
