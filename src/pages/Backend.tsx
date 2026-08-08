@@ -112,12 +112,12 @@ export default function Backend() {
           <span className="text-fg-muted text-[11.5px]">digitalocean · main</span>
           <span className="text-fg-faint">·</span>
           <a
-            href="https://api.qeb.mx/health"
+            href="https://dolphin-app-9q4jl.ondigitalocean.app"
             target="_blank"
             rel="noreferrer"
             className="text-brand-400 hover:underline text-[11.5px]"
           >
-            api.qeb.mx ↗
+            qeb-back en DO ↗
           </a>
         </div>
         <StatusBadge status="ok" label="operativo" />

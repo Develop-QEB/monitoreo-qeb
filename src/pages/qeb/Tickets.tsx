@@ -1,54 +1,110 @@
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Section } from '@/components/ui/Section'
 import { StatusBadge, type StatusKind } from '@/components/ui/StatusBadge'
-import { UnicodeSparkline } from '@/components/ui/UnicodeSparkline'
+import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
 interface Ticket {
-  id: string
-  title: string
-  priority: 'alta' | 'media' | 'baja'
-  assignee: string
-  created: string
-  age: string
-  sla: 'ok' | 'warn' | 'crit'
+  id: number
+  titulo: string
+  status: string
+  prioridad: string
+  categoria: string | null
+  area: 'TI' | 'QEB' | string
+  usuario_nombre: string
+  usuario_email: string
+  respondido_por: string | null
+  created_at: string
+  respondido_at: string | null
 }
 
-const OPEN_TICKETS: Ticket[] = [
-  { id: 'ASN-4218', title: 'Filtro de reservas por fecha no responde',                                    priority: 'alta',  assignee: 'akary', created: '2026-08-07', age: '4h',  sla: 'warn' },
-  { id: 'ASN-4217', title: 'Error 500 al aprobar arte digital sin thumbnail',                             priority: 'alta',  assignee: 'mario', created: '2026-08-07', age: '6h',  sla: 'warn' },
-  { id: 'ASN-4215', title: 'Timeout en /api/reportes/aps con rangos > 3 catorcenas',                      priority: 'media', assignee: 'akary', created: '2026-08-06', age: '1d',  sla: 'ok'   },
-  { id: 'ASN-4212', title: 'Descarga de manual PDF falla en Safari iOS',                                   priority: 'baja',  assignee: 'mario', created: '2026-08-06', age: '1d',  sla: 'ok'   },
-  { id: 'ASN-4209', title: 'Modal de reemplazo no clona filas de artes_tradicionales',                    priority: 'media', assignee: 'akary', created: '2026-08-05', age: '2d',  sla: 'warn' },
-  { id: 'ASN-4204', title: 'Buscador de códigos no prioriza cercanía geográfica',                         priority: 'baja',  assignee: 'jos',   created: '2026-08-04', age: '3d',  sla: 'crit' },
-  { id: 'ASN-4198', title: 'Dashboard de inventario tarda >5s con >100 filtros activos',                  priority: 'media', assignee: 'mario', created: '2026-08-02', age: '5d',  sla: 'crit' },
-]
-
-interface Workload {
-  assignee: string
-  open: number
-  closed7d: number
-  spark: number[]
+interface Stats {
+  total: number
+  nuevos: number
+  en_proceso: number
+  resueltos: number
+  sin_respuesta: number
+  area_ti: number
+  area_qeb: number
+  alta: number
 }
 
-const WORKLOAD: Workload[] = [
-  { assignee: 'akary', open: 3, closed7d: 12, spark: [2, 3, 4, 3, 2, 3, 4] },
-  { assignee: 'mario', open: 3, closed7d: 8,  spark: [1, 2, 2, 1, 1, 2, 2] },
-  { assignee: 'jos',   open: 1, closed7d: 2,  spark: [0, 1, 0, 0, 1, 0, 0] },
-]
-
-const PRIORITY_COLOR: Record<Ticket['priority'], string> = {
-  alta:  'text-state-crit',
-  media: 'text-state-warn',
-  baja:  'text-fg-muted',
+interface Distribucion {
+  categoria: string | null
+  area: string
+  count: number
 }
 
-const FILTERS = ['todas', 'alta', 'media', 'baja'] as const
-type Filter = (typeof FILTERS)[number]
+const STATUS_STYLE: Record<string, { kind: StatusKind }> = {
+  Nuevo:        { kind: 'warn' },
+  'En proceso': { kind: 'info' },
+  Resuelto:     { kind: 'ok' },
+  Cerrado:      { kind: 'muted' },
+}
+
+const PRIORIDAD_TEXT: Record<string, string> = {
+  Alta:   'text-state-crit',
+  Normal: 'text-fg-secondary',
+  Baja:   'text-fg-muted',
+}
+
+const AREA_COLOR: Record<string, string> = {
+  TI:  'text-brand-300',
+  QEB: 'text-state-info',
+}
+
+const STATUS_FILTERS = ['todos', 'Nuevo', 'En proceso', 'Resuelto'] as const
+type StatusFilter = (typeof STATUS_FILTERS)[number]
+const AREA_FILTERS = ['todas', 'QEB', 'TI'] as const
+type AreaFilter = (typeof AREA_FILTERS)[number]
+
+function ageFrom(iso: string) {
+  const then = new Date(iso).getTime()
+  const now = Date.now()
+  const h = Math.round((now - then) / (1000 * 60 * 60))
+  if (h < 24) return `${h}h`
+  return `${Math.round(h / 24)}d`
+}
 
 export default function Tickets() {
-  const [filter, setFilter] = useState<Filter>('todas')
-  const filtered = OPEN_TICKETS.filter((t) => filter === 'todas' || t.priority === filter)
+  const [status, setStatus] = useState<StatusFilter>('todos')
+  const [area, setArea] = useState<AreaFilter>('todas')
+
+  const statsQ = useQuery({
+    queryKey: ['qeb', 'tickets', 'stats'],
+    queryFn: () => api.get<{ stats: Stats }>('/qeb/tickets/stats').then((r) => r.stats),
+    staleTime: 60_000,
+  })
+
+  const distQ = useQuery({
+    queryKey: ['qeb', 'tickets', 'by-categoria'],
+    queryFn: () =>
+      api.get<{ distribucion: Distribucion[] }>('/qeb/tickets/by-categoria').then((r) => r.distribucion),
+    staleTime: 60_000,
+  })
+
+  const listQ = useQuery({
+    queryKey: ['qeb', 'tickets', status, area],
+    queryFn: () => {
+      const qs = new URLSearchParams({ limit: '50' })
+      if (status !== 'todos') qs.set('status', status)
+      if (area !== 'todas') qs.set('area', area)
+      return api.get<{ tickets: Ticket[] }>(`/qeb/tickets?${qs}`).then((r) => r.tickets)
+    },
+    staleTime: 30_000,
+  })
+
+  const stats = statsQ.data
+  const tickets = listQ.data ?? []
+  const distribucion = distQ.data ?? []
+
+  const bannerStatus: StatusKind = statsQ.isError ? 'crit' : (stats?.sin_respuesta ?? 0) > 0 ? 'warn' : 'ok'
+  const bannerLabel = statsQ.isLoading
+    ? 'cargando…'
+    : statsQ.isError
+      ? 'error api'
+      : `${stats?.sin_respuesta ?? 0} sin respuesta`
 
   return (
     <div className="flex flex-col gap-6 text-[13px]">
@@ -57,113 +113,202 @@ export default function Tickets() {
           <span className="text-fg-muted text-[11.5px]">negocio</span>
           <span className="text-fg-primary text-[15px]">tickets.qeb</span>
           <span className="text-fg-faint">·</span>
-          <span className="text-fg-muted text-[11.5px]">asana · soporte</span>
+          <span className="text-fg-muted text-[11.5px]">
+            reportes y solicitudes de los usuarios de qeb · datos en vivo
+          </span>
         </div>
-        <StatusBadge status="warn" label="2 fuera de sla" />
+        <StatusBadge status={bannerStatus} label={bannerLabel} />
       </div>
+
+      {(statsQ.isError || listQ.isError) && (
+        <div className="rounded-md bg-state-critSoft border border-state-crit/30 px-3 py-2 text-[12px] text-state-crit font-mono">
+          [api] {((statsQ.error ?? listQ.error) as Error)?.message}
+        </div>
+      )}
 
       {/* KPI row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: 'abiertos',         value: '12',   accent: 'text-fg-primary' },
-          { label: 'cerrados 7d',      value: '22',   accent: 'text-state-ok' },
-          { label: 'tiempo resolución', value: '18h',  accent: 'text-fg-primary' },
-          { label: 'fuera de sla',     value: '2',    accent: 'text-state-warn' },
+          { label: 'total',            value: stats?.total,         accent: 'text-fg-primary' },
+          { label: 'nuevos',           value: stats?.nuevos,        accent: 'text-state-warn' },
+          { label: 'resueltos',        value: stats?.resueltos,     accent: 'text-state-ok' },
+          { label: 'alta prioridad',   value: stats?.alta,          accent: 'text-state-crit' },
         ].map((k) => (
           <div key={k.label} className="rounded-md bg-bg-card border border-border-subtle px-4 py-3">
             <div className="text-fg-faint text-[10.5px] uppercase tracking-wide">{k.label}</div>
-            <div className={cn('tabular-nums text-[22px] mt-1', k.accent)}>{k.value}</div>
+            <div className={cn('tabular-nums text-[22px] mt-1', k.accent)}>
+              {statsQ.isLoading ? '…' : (k.value ?? 0)}
+            </div>
           </div>
         ))}
       </div>
 
-      {/* Open tickets */}
+      {/* Por área */}
+      <Section title="por área" subtitle="TI atiende SAP y usuarios · QEB atiende todo lo demás">
+        <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="rounded-md bg-bg-card border border-border-subtle px-4 py-3">
+            <div className="flex items-baseline justify-between mb-1">
+              <div className="text-fg-faint text-[10.5px] uppercase tracking-wide">QEB</div>
+              <div className="text-state-info tabular-nums text-[22px]">
+                {stats?.area_qeb ?? '…'}
+              </div>
+            </div>
+            <div className="text-fg-muted text-[11.5px]">
+              bugs, features, ayuda, correcciones de datos
+            </div>
+          </div>
+          <div className="rounded-md bg-bg-card border border-border-subtle px-4 py-3">
+            <div className="flex items-baseline justify-between mb-1">
+              <div className="text-fg-faint text-[10.5px] uppercase tracking-wide">TI</div>
+              <div className="text-brand-300 tabular-nums text-[22px]">
+                {stats?.area_ti ?? '…'}
+              </div>
+            </div>
+            <div className="text-fg-muted text-[11.5px]">
+              Posteo SAP · Desposteo SAP · Ajuste de Usuario
+            </div>
+          </div>
+        </div>
+      </Section>
+
+      {/* Distribucion por categoria */}
+      <Section title="por categoría" subtitle="conteo histórico">
+        <div className="mt-1">
+          <div className="grid grid-cols-[1fr_60px_100px] gap-3 px-2 py-1 text-[11px] text-fg-faint uppercase tracking-wide">
+            <span>categoría</span>
+            <span>área</span>
+            <span className="text-right">conteo</span>
+          </div>
+          <div className="border-t border-border-subtle">
+            {distQ.isLoading && (
+              <div className="text-fg-muted text-center py-4 animate-pulse">cargando…</div>
+            )}
+            {!distQ.isLoading &&
+              distribucion.map((d, i) => (
+                <div
+                  key={`${d.categoria}-${d.area}-${i}`}
+                  className={cn(
+                    'grid grid-cols-[1fr_60px_100px] gap-3 px-2 py-1.5 items-center hover:bg-white/[0.02] transition-colors',
+                    i !== 0 && 'border-t border-border-subtle',
+                  )}
+                >
+                  <span className="text-fg-primary">{d.categoria ?? 'sin categoría'}</span>
+                  <span className={cn('text-[11.5px]', AREA_COLOR[d.area] ?? 'text-fg-muted')}>
+                    {d.area}
+                  </span>
+                  <span className="text-right text-fg-primary tabular-nums">{d.count}</span>
+                </div>
+              ))}
+          </div>
+        </div>
+      </Section>
+
+      {/* Lista */}
       <Section
-        title="tickets abiertos"
-        subtitle="ordenados por antigüedad"
+        title="tickets recientes"
+        subtitle="últimos 50 · orden por fecha de creación"
         right={
-          <div className="flex items-center gap-1 text-[11px]">
-            <span className="text-fg-faint">prioridad:</span>
-            {FILTERS.map((f) => (
+          <div className="flex flex-wrap items-center gap-1 text-[11px]">
+            <span className="text-fg-faint">estado:</span>
+            {STATUS_FILTERS.map((f) => (
               <button
                 key={f}
-                onClick={() => setFilter(f)}
+                onClick={() => setStatus(f)}
                 className={cn(
                   'px-2 h-6 rounded border',
-                  filter === f
+                  status === f
                     ? 'border-brand-500/40 bg-brand-500/10 text-brand-300'
                     : 'border-border-subtle text-fg-muted hover:text-fg-primary',
                 )}
               >
-                {f}
+                {f.toLowerCase()}
+              </button>
+            ))}
+            <span className="text-fg-faint ml-2">área:</span>
+            {AREA_FILTERS.map((f) => (
+              <button
+                key={f}
+                onClick={() => setArea(f)}
+                className={cn(
+                  'px-2 h-6 rounded border',
+                  area === f
+                    ? 'border-brand-500/40 bg-brand-500/10 text-brand-300'
+                    : 'border-border-subtle text-fg-muted hover:text-fg-primary',
+                )}
+              >
+                {f.toLowerCase()}
               </button>
             ))}
           </div>
         }
       >
         <div className="mt-1">
-          <div className="grid grid-cols-[100px_60px_1fr_100px_60px_60px] gap-3 px-2 py-1 text-[11px] text-fg-faint uppercase tracking-wide">
+          <div className="grid grid-cols-[70px_1fr_180px_140px_60px_80px_100px_60px] gap-3 px-2 py-1 text-[11px] text-fg-faint uppercase tracking-wide">
             <span>id</span>
-            <span>pri</span>
             <span>título</span>
-            <span>asignado</span>
+            <span>usuario</span>
+            <span>categoría</span>
+            <span>área</span>
+            <span>prioridad</span>
+            <span>estado</span>
             <span className="text-right">edad</span>
-            <span className="text-right">sla</span>
           </div>
           <div className="border-t border-border-subtle">
-            {filtered.map((t, i) => (
-              <div
-                key={t.id}
-                className={cn(
-                  'grid grid-cols-[100px_60px_1fr_100px_60px_60px] gap-3 px-2 py-1.5 items-center hover:bg-white/[0.02] transition-colors',
-                  i !== 0 && 'border-t border-border-subtle',
-                )}
-              >
-                <span className="text-brand-300 tabular-nums">{t.id}</span>
-                <span className={cn('font-medium', PRIORITY_COLOR[t.priority])}>
-                  {t.priority}
-                </span>
-                <span className="text-fg-primary truncate">{t.title}</span>
-                <span className="text-fg-muted">{t.assignee}</span>
-                <span className="text-right text-fg-secondary tabular-nums">{t.age}</span>
-                <span className="text-right">
-                  <StatusBadge status={t.sla as StatusKind} />
-                </span>
-              </div>
-            ))}
-            {filtered.length === 0 && (
+            {listQ.isLoading && (
+              <div className="text-fg-muted text-center py-6 animate-pulse">cargando…</div>
+            )}
+            {!listQ.isLoading &&
+              tickets.map((t, i) => {
+                const st = STATUS_STYLE[t.status] ?? { kind: 'muted' as StatusKind }
+                return (
+                  <div
+                    key={t.id}
+                    className={cn(
+                      'grid grid-cols-[70px_1fr_180px_140px_60px_80px_100px_60px] gap-3 px-2 py-1.5 items-center hover:bg-white/[0.02] transition-colors',
+                      i !== 0 && 'border-t border-border-subtle',
+                    )}
+                  >
+                    <span className="text-brand-300 tabular-nums">#{t.id}</span>
+                    <div className="min-w-0">
+                      <div className="text-fg-primary truncate">{t.titulo}</div>
+                      {t.respondido_por && (
+                        <div className="text-fg-faint text-[10.5px] truncate">
+                          respondiendo: {t.respondido_por}
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-fg-primary truncate text-[12px]">
+                        {t.usuario_nombre}
+                      </div>
+                      <div className="text-fg-muted truncate text-[10.5px]">
+                        {t.usuario_email}
+                      </div>
+                    </div>
+                    <span className="text-fg-secondary truncate text-[11.5px]">
+                      {t.categoria ?? '—'}
+                    </span>
+                    <span className={cn('text-[11.5px]', AREA_COLOR[t.area] ?? 'text-fg-muted')}>
+                      {t.area}
+                    </span>
+                    <span
+                      className={cn(
+                        'text-[11.5px]',
+                        PRIORIDAD_TEXT[t.prioridad] ?? 'text-fg-muted',
+                      )}
+                    >
+                      {t.prioridad}
+                    </span>
+                    <StatusBadge status={st.kind} label={t.status} />
+                    <span className="text-right text-fg-muted tabular-nums text-[11.5px]">
+                      {ageFrom(t.created_at)}
+                    </span>
+                  </div>
+                )
+              })}
+            {!listQ.isLoading && tickets.length === 0 && !listQ.isError && (
               <div className="text-fg-muted text-center py-4">sin resultados</div>
             )}
-          </div>
-        </div>
-      </Section>
-
-      {/* Workload */}
-      <Section title="carga de trabajo" subtitle="por atendedor · abiertos + cerrados 7d">
-        <div className="mt-1">
-          <div className="grid grid-cols-[140px_100px_120px_1fr] gap-3 px-2 py-1 text-[11px] text-fg-faint uppercase tracking-wide">
-            <span>asignado</span>
-            <span className="text-right">abiertos</span>
-            <span className="text-right">cerrados 7d</span>
-            <span className="text-right">tendencia</span>
-          </div>
-          <div className="border-t border-border-subtle">
-            {WORKLOAD.map((w, i) => (
-              <div
-                key={w.assignee}
-                className={cn(
-                  'grid grid-cols-[140px_100px_120px_1fr] gap-3 px-2 py-1.5 items-center hover:bg-white/[0.02] transition-colors',
-                  i !== 0 && 'border-t border-border-subtle',
-                )}
-              >
-                <span className="text-fg-primary">{w.assignee}</span>
-                <span className="text-right text-fg-primary tabular-nums">{w.open}</span>
-                <span className="text-right text-state-ok tabular-nums">{w.closed7d}</span>
-                <span className="text-right">
-                  <UnicodeSparkline data={w.spark} color="#BB9AF7" />
-                </span>
-              </div>
-            ))}
           </div>
         </div>
       </Section>

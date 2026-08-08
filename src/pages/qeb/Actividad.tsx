@@ -1,73 +1,99 @@
+import { useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Section } from '@/components/ui/Section'
-import { StatusBadge } from '@/components/ui/StatusBadge'
-import { UnicodeSparkline } from '@/components/ui/UnicodeSparkline'
+import { StatusBadge, type StatusKind } from '@/components/ui/StatusBadge'
+import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
-const CONNECTIONS_24H = [
-  12, 10, 8, 6, 5, 4, 6, 12, 22, 34, 42, 48, 52, 56, 58, 55, 52, 48, 44, 40, 36, 30, 22, 18,
-]
-
-interface Session {
-  user: string
-  email: string
-  role: 'asesor' | 'admin' | 'coordinador' | 'diseñador'
-  page: string
-  since: string
-  active: boolean
+interface Stats {
+  total: number
+  activos: number
+  deleted: number
 }
 
-const LIVE_SESSIONS: Session[] = [
-  { user: 'akary',    email: 'develop@qeb.mx',       role: 'admin',       page: '/dashboard',            since: '14:32', active: true  },
-  { user: 'mario',    email: 'mario@qeb.mx',         role: 'admin',       page: '/reservas',             since: '13:58', active: true  },
-  { user: 'jos',      email: 'jos@qeb.mx',           role: 'coordinador', page: '/campanas/2409',        since: '14:22', active: true  },
-  { user: 'nadia',    email: 'nadia@qeb.mx',         role: 'asesor',     page: '/inventario',           since: '14:15', active: true  },
-  { user: 'ricardo',  email: 'ricardo@qeb.mx',       role: 'asesor',     page: '/dashboard',            since: '14:47', active: true  },
-  { user: 'sofia',    email: 'sofia@qeb.mx',         role: 'diseñador',  page: '/campanas/2418/artes',  since: '13:11', active: false },
-]
-
-interface TopUser {
-  name: string
-  email: string
-  sessions7d: number
-  timeAvg: string
-  spark: number[]
+interface Sesion {
+  id: number
+  module_name: string
+  user_id: number | null
+  username: string | null
+  locked_at: string
 }
 
-const TOP_USERS: TopUser[] = [
-  { name: 'akary',    email: 'develop@qeb.mx',  sessions7d: 42, timeAvg: '4h 12m', spark: [5, 6, 6, 7, 6, 6, 6] },
-  { name: 'mario',    email: 'mario@qeb.mx',    sessions7d: 38, timeAvg: '3h 48m', spark: [5, 5, 6, 6, 5, 5, 6] },
-  { name: 'nadia',    email: 'nadia@qeb.mx',    sessions7d: 34, timeAvg: '3h 22m', spark: [4, 5, 5, 5, 5, 4, 5] },
-  { name: 'jos',      email: 'jos@qeb.mx',      sessions7d: 28, timeAvg: '2h 55m', spark: [4, 4, 4, 4, 4, 4, 4] },
-  { name: 'ricardo',  email: 'ricardo@qeb.mx',  sessions7d: 22, timeAvg: '2h 10m', spark: [3, 3, 3, 4, 3, 3, 3] },
-]
-
-interface LoginRow {
-  time: string
-  user: string
-  ip: string
-  status: 'ok' | 'fail'
-  ua: string
+interface Usuario {
+  id: number
+  nombre: string
+  correo_electronico: string
+  area: string
+  puesto: string
+  user_role: string
+  created_at: string | null
+  updated_at: string | null
 }
 
-const RECENT_LOGINS: LoginRow[] = [
-  { time: '14:47:12', user: 'ricardo',  ip: '187.144.22.14',   status: 'ok',   ua: 'Chrome · Windows' },
-  { time: '14:32:04', user: 'akary',    ip: '189.203.14.211',  status: 'ok',   ua: 'Chrome · Windows' },
-  { time: '14:22:41', user: 'jos',      ip: '201.148.9.44',    status: 'ok',   ua: 'Safari · macOS' },
-  { time: '14:15:33', user: 'nadia',    ip: '187.144.22.14',   status: 'ok',   ua: 'Chrome · Windows' },
-  { time: '13:58:12', user: 'mario',    ip: '189.203.14.211',  status: 'ok',   ua: 'Chrome · Windows' },
-  { time: '13:11:04', user: 'sofia',    ip: '201.148.9.44',    status: 'ok',   ua: 'Firefox · macOS' },
-  { time: '12:44:19', user: 'desconocido',  ip: '45.129.244.10',   status: 'fail', ua: 'curl/7.88.1' },
-  { time: '12:44:15', user: 'desconocido',  ip: '45.129.244.10',   status: 'fail', ua: 'curl/7.88.1' },
-]
+function timeFrom(iso: string) {
+  const then = new Date(iso).getTime()
+  const now = Date.now()
+  const min = Math.round((now - then) / (1000 * 60))
+  if (min < 1) return 'ahora'
+  if (min < 60) return `hace ${min}m`
+  const h = Math.round(min / 60)
+  if (h < 24) return `hace ${h}h`
+  return `hace ${Math.round(h / 24)}d`
+}
 
-const ROLE_COLOR: Record<Session['role'], string> = {
-  admin:       'text-state-crit',
-  coordinador: 'text-brand-300',
-  asesor:      'text-state-info',
-  diseñador:   'text-state-orange',
+const ROLE_COLOR: Record<string, string> = {
+  Admin:  'text-state-crit',
+  admin:  'text-state-crit',
+  Normal: 'text-fg-secondary',
 }
 
 export default function Actividad() {
+  const [search, setSearch] = useState('')
+
+  const statsQ = useQuery({
+    queryKey: ['qeb', 'actividad', 'stats'],
+    queryFn: () => api.get<{ stats: Stats }>('/qeb/actividad/stats').then((r) => r.stats),
+    staleTime: 60_000,
+  })
+
+  const sesionesQ = useQuery({
+    queryKey: ['qeb', 'actividad', 'sesiones'],
+    queryFn: () =>
+      api.get<{ sesiones: Sesion[] }>('/qeb/actividad/sesiones').then((r) => r.sesiones),
+    staleTime: 15_000,
+    refetchInterval: 20_000,
+  })
+
+  const usuariosQ = useQuery({
+    queryKey: ['qeb', 'actividad', 'usuarios'],
+    queryFn: () =>
+      api.get<{ usuarios: Usuario[] }>('/qeb/actividad/usuarios').then((r) => r.usuarios),
+    staleTime: 5 * 60_000,
+  })
+
+  const stats = statsQ.data
+  const sesiones = sesionesQ.data ?? []
+  const usuarios = usuariosQ.data ?? []
+
+  const usuariosFiltrados = useMemo(
+    () =>
+      usuarios.filter(
+        (u) =>
+          search === '' ||
+          (u.nombre + u.correo_electronico + u.area + u.puesto)
+            .toLowerCase()
+            .includes(search.toLowerCase()),
+      ),
+    [usuarios, search],
+  )
+
+  const bannerStatus: StatusKind = statsQ.isError ? 'crit' : 'info'
+  const bannerLabel = statsQ.isLoading
+    ? 'cargando…'
+    : statsQ.isError
+      ? 'error api'
+      : `${sesiones.length} sesiones 24h · ${stats?.activos ?? 0} usuarios activos`
+
   return (
     <div className="flex flex-col gap-6 text-[13px]">
       <div className="flex items-center justify-between border-b border-border-subtle pb-4">
@@ -75,134 +101,151 @@ export default function Actividad() {
           <span className="text-fg-muted text-[11.5px]">negocio</span>
           <span className="text-fg-primary text-[15px]">actividad.qeb</span>
           <span className="text-fg-faint">·</span>
-          <span className="text-fg-muted text-[11.5px]">usuarios · sesiones · tiempo real</span>
+          <span className="text-fg-muted text-[11.5px]">
+            usuarios de qeb · sesiones · session_locks
+          </span>
         </div>
-        <StatusBadge status="info" label="6 en línea ahora" />
+        <StatusBadge status={bannerStatus} label={bannerLabel} />
       </div>
+
+      {(statsQ.isError || sesionesQ.isError || usuariosQ.isError) && (
+        <div className="rounded-md bg-state-critSoft border border-state-crit/30 px-3 py-2 text-[12px] text-state-crit font-mono">
+          [api] {((statsQ.error ?? sesionesQ.error ?? usuariosQ.error) as Error)?.message}
+        </div>
+      )}
 
       {/* KPI row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: 'en línea ahora',  value: '6',   accent: 'text-state-info' },
-          { label: 'pico 24h',        value: '58',  accent: 'text-fg-primary' },
-          { label: 'logins 24h',      value: '124', accent: 'text-fg-primary' },
-          { label: 'logins fallidos', value: '3',   accent: 'text-state-warn' },
+          { label: 'usuarios totales',    value: stats?.total,      accent: 'text-fg-primary' },
+          { label: 'activos',             value: stats?.activos,    accent: 'text-state-ok' },
+          { label: 'eliminados',          value: stats?.deleted,    accent: 'text-fg-muted' },
+          { label: 'sesiones 24h',        value: sesiones.length,   accent: 'text-state-info' },
         ].map((k) => (
           <div key={k.label} className="rounded-md bg-bg-card border border-border-subtle px-4 py-3">
             <div className="text-fg-faint text-[10.5px] uppercase tracking-wide">{k.label}</div>
-            <div className={cn('tabular-nums text-[22px] mt-1', k.accent)}>{k.value}</div>
+            <div className={cn('tabular-nums text-[22px] mt-1', k.accent)}>
+              {(statsQ.isLoading && k.label !== 'sesiones 24h') ? '…' : (k.value ?? 0)}
+            </div>
           </div>
         ))}
       </div>
 
-      {/* Connections timeline */}
-      <Section title="conexiones" subtitle="usuarios simultáneos · 24h">
-        <div className="mt-2 px-2">
-          <UnicodeSparkline data={CONNECTIONS_24H} color="#7DCFFF" className="text-[16px]" />
-          <div className="mt-2 flex justify-between text-fg-faint text-[10.5px] tabular-nums">
-            <span>00:00</span>
-            <span>06:00</span>
-            <span>12:00</span>
-            <span>18:00</span>
-            <span>ahora</span>
+      {/* Sesiones activas (session_locks) */}
+      <Section
+        title="sesiones recientes"
+        subtitle="tabla session_locks · últimas 24h · quién ha editado qué"
+        right={
+          <button
+            onClick={() => sesionesQ.refetch()}
+            disabled={sesionesQ.isFetching}
+            className="px-2 h-6 rounded border border-border-subtle text-fg-muted hover:text-fg-primary disabled:opacity-50 text-[11px]"
+          >
+            {sesionesQ.isFetching ? '…' : 'actualizar'}
+          </button>
+        }
+      >
+        <div className="mt-1">
+          <div className="grid grid-cols-[60px_180px_1fr_120px] gap-3 px-2 py-1 text-[11px] text-fg-faint uppercase tracking-wide">
+            <span>id</span>
+            <span>usuario</span>
+            <span>módulo bloqueado</span>
+            <span className="text-right">hace</span>
+          </div>
+          <div className="border-t border-border-subtle">
+            {sesionesQ.isLoading && (
+              <div className="text-fg-muted text-center py-4 animate-pulse">cargando…</div>
+            )}
+            {!sesionesQ.isLoading &&
+              sesiones.map((s, i) => (
+                <div
+                  key={s.id}
+                  className={cn(
+                    'grid grid-cols-[60px_180px_1fr_120px] gap-3 px-2 py-1.5 items-center hover:bg-white/[0.02] transition-colors',
+                    i !== 0 && 'border-t border-border-subtle',
+                  )}
+                >
+                  <span className="text-brand-300 tabular-nums text-[11.5px]">#{s.id}</span>
+                  <span className="text-fg-primary truncate">
+                    {s.username ?? `user_${s.user_id ?? '?'}`}
+                  </span>
+                  <span className="text-fg-secondary truncate font-mono text-[12px]">
+                    {s.module_name}
+                  </span>
+                  <span className="text-right text-fg-muted tabular-nums text-[11.5px]">
+                    {timeFrom(s.locked_at)}
+                  </span>
+                </div>
+              ))}
+            {!sesionesQ.isLoading && sesiones.length === 0 && !sesionesQ.isError && (
+              <div className="text-fg-muted text-center py-4">
+                sin sesiones activas en las últimas 24 horas
+              </div>
+            )}
           </div>
         </div>
       </Section>
 
-      {/* Live sessions */}
-      <Section title="sesiones activas" subtitle="en tiempo real vía socket.io">
+      {/* Usuarios */}
+      <Section
+        title="usuarios"
+        subtitle={`${usuarios.length} activos · tabla usuario`}
+        right={
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="buscar por nombre, email, área..."
+            className="bg-bg-card border border-border-subtle rounded px-2 h-6 text-fg-secondary outline-none focus:border-brand-500/50 min-w-[240px] text-[11.5px]"
+          />
+        }
+      >
         <div className="mt-1">
-          <div className="grid grid-cols-[80px_100px_180px_100px_1fr_80px] gap-3 px-2 py-1 text-[11px] text-fg-faint uppercase tracking-wide">
-            <span>estado</span>
-            <span>usuario</span>
+          <div className="grid grid-cols-[60px_180px_220px_1fr_1fr_100px] gap-3 px-2 py-1 text-[11px] text-fg-faint uppercase tracking-wide">
+            <span>id</span>
+            <span>nombre</span>
             <span>email</span>
+            <span>área</span>
+            <span>puesto</span>
             <span>rol</span>
-            <span>viendo</span>
-            <span className="text-right">desde</span>
           </div>
-          <div className="border-t border-border-subtle">
-            {LIVE_SESSIONS.map((s, i) => (
-              <div
-                key={s.user}
-                className={cn(
-                  'grid grid-cols-[80px_100px_180px_100px_1fr_80px] gap-3 px-2 py-1.5 items-center hover:bg-white/[0.02] transition-colors',
-                  i !== 0 && 'border-t border-border-subtle',
-                )}
-              >
-                <StatusBadge status={s.active ? 'ok' : 'muted'} label={s.active ? 'en vivo' : 'inactivo'} />
-                <span className="text-fg-primary">{s.user}</span>
-                <span className="text-fg-muted truncate">{s.email}</span>
-                <span className={cn('text-[11.5px]', ROLE_COLOR[s.role])}>{s.role}</span>
-                <span className="text-fg-primary font-mono text-[12px] truncate">{s.page}</span>
-                <span className="text-right text-fg-muted tabular-nums text-[11.5px]">
-                  {s.since}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </Section>
-
-      {/* Top users */}
-      <Section title="más activos" subtitle="últimos 7 días · sesiones y tiempo promedio">
-        <div className="mt-1">
-          <div className="grid grid-cols-[120px_1fr_100px_100px_120px] gap-3 px-2 py-1 text-[11px] text-fg-faint uppercase tracking-wide">
-            <span>usuario</span>
-            <span>email</span>
-            <span className="text-right">sesiones 7d</span>
-            <span className="text-right">tiempo prom</span>
-            <span className="text-right">tendencia</span>
-          </div>
-          <div className="border-t border-border-subtle">
-            {TOP_USERS.map((u, i) => (
-              <div
-                key={u.email}
-                className={cn(
-                  'grid grid-cols-[120px_1fr_100px_100px_120px] gap-3 px-2 py-1.5 items-center hover:bg-white/[0.02] transition-colors',
-                  i !== 0 && 'border-t border-border-subtle',
-                )}
-              >
-                <span className="text-fg-primary">{u.name}</span>
-                <span className="text-fg-muted truncate">{u.email}</span>
-                <span className="text-right text-fg-primary tabular-nums">{u.sessions7d}</span>
-                <span className="text-right text-fg-secondary tabular-nums">{u.timeAvg}</span>
-                <span className="text-right">
-                  <UnicodeSparkline data={u.spark} color="#BB9AF7" />
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </Section>
-
-      {/* Recent logins */}
-      <Section title="logins recientes" subtitle="24h · exitosos y fallidos">
-        <div className="mt-1">
-          <div className="grid grid-cols-[80px_100px_140px_60px_1fr] gap-3 px-2 py-1 text-[11px] text-fg-faint uppercase tracking-wide">
-            <span>hora</span>
-            <span>usuario</span>
-            <span>ip</span>
-            <span>estado</span>
-            <span>navegador</span>
-          </div>
-          <div className="border-t border-border-subtle">
-            {RECENT_LOGINS.map((l, i) => (
-              <div
-                key={l.time + l.user}
-                className={cn(
-                  'grid grid-cols-[80px_100px_140px_60px_1fr] gap-3 px-2 py-1.5 items-center hover:bg-white/[0.02] transition-colors',
-                  i !== 0 && 'border-t border-border-subtle',
-                )}
-              >
-                <span className="text-fg-muted tabular-nums glyph text-[11.5px]">{l.time}</span>
-                <span className={cn(l.status === 'fail' ? 'text-state-crit' : 'text-fg-primary')}>
-                  {l.user}
-                </span>
-                <span className="text-fg-muted tabular-nums text-[11.5px]">{l.ip}</span>
-                <StatusBadge status={l.status === 'ok' ? 'ok' : 'crit'} />
-                <span className="text-fg-muted truncate text-[11.5px]">{l.ua}</span>
-              </div>
-            ))}
+          <div className="border-t border-border-subtle max-h-[500px] overflow-auto">
+            {usuariosQ.isLoading && (
+              <div className="text-fg-muted text-center py-4 animate-pulse">cargando…</div>
+            )}
+            {!usuariosQ.isLoading &&
+              usuariosFiltrados.map((u, i) => (
+                <div
+                  key={u.id}
+                  className={cn(
+                    'grid grid-cols-[60px_180px_220px_1fr_1fr_100px] gap-3 px-2 py-1.5 items-center hover:bg-white/[0.02] transition-colors',
+                    i !== 0 && 'border-t border-border-subtle',
+                  )}
+                >
+                  <span className="text-brand-300 tabular-nums text-[11.5px]">#{u.id}</span>
+                  <span className="text-fg-primary truncate">{u.nombre}</span>
+                  <span className="text-fg-muted truncate text-[11.5px]">
+                    {u.correo_electronico}
+                  </span>
+                  <span className="text-fg-secondary truncate text-[11.5px]">
+                    {u.area || '—'}
+                  </span>
+                  <span className="text-fg-secondary truncate text-[11.5px]">
+                    {u.puesto || '—'}
+                  </span>
+                  <span
+                    className={cn(
+                      'text-[11.5px]',
+                      ROLE_COLOR[u.user_role] ?? 'text-fg-muted',
+                    )}
+                  >
+                    {u.user_role}
+                  </span>
+                </div>
+              ))}
+            {!usuariosQ.isLoading && usuariosFiltrados.length === 0 && (
+              <div className="text-fg-muted text-center py-4">sin resultados</div>
+            )}
           </div>
         </div>
       </Section>

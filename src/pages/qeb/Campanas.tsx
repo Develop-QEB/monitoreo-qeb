@@ -1,156 +1,240 @@
+import { useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Section } from '@/components/ui/Section'
 import { StatusBadge, type StatusKind } from '@/components/ui/StatusBadge'
-import { UnicodeSparkline } from '@/components/ui/UnicodeSparkline'
+import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
-interface Campana {
-  id: string
+interface Campania {
+  id: number
   nombre: string
-  cliente: string
-  asesor: string
-  inicio: string
-  fin: string
-  daysLeft: number
-  status: StatusKind
-  arte: 'aprobado' | 'en revisión' | 'pendiente' | 'sin arte'
+  fecha_inicio: string
+  fecha_fin: string
+  total_caras: string
+  status: string
+  fecha_aprobacion: string | null
+  posted_to_sap: number | null
+  cliente: string | null
+  asesor: string | null
+  razon_social: string | null
 }
 
-const CAMPANAS: Campana[] = [
-  { id: 'C-2409', nombre: 'Verano FEMSA · GDL',     cliente: 'Coca-Cola FEMSA', asesor: 'akary', inicio: '2026-07-15', fin: '2026-08-15', daysLeft: 8,  status: 'warn', arte: 'aprobado'     },
-  { id: 'C-2411', nombre: 'Kellogg\'s regreso a clases', cliente: 'Kellogg\'s',     asesor: 'mario', inicio: '2026-08-01', fin: '2026-08-14', daysLeft: 7,  status: 'warn', arte: 'aprobado'     },
-  { id: 'C-2414', nombre: 'Herdez CDMX Q3',         cliente: 'Herdez',          asesor: 'jos',   inicio: '2026-08-10', fin: '2026-09-10', daysLeft: 34, status: 'ok',   arte: 'aprobado'     },
-  { id: 'C-2418', nombre: 'Bimbo Norte MTY',        cliente: 'Bimbo',           asesor: 'mario', inicio: '2026-08-12', fin: '2026-09-25', daysLeft: 49, status: 'ok',   arte: 'en revisión'  },
-  { id: 'C-2421', nombre: 'Nestlé Bajío',           cliente: 'Nestlé',          asesor: 'akary', inicio: '2026-08-18', fin: '2026-10-01', daysLeft: 55, status: 'ok',   arte: 'pendiente'    },
-  { id: 'C-2425', nombre: 'Lala GDL Ago',           cliente: 'Lala',            asesor: 'akary', inicio: '2026-08-22', fin: '2026-09-04', daysLeft: 28, status: 'crit', arte: 'sin arte'     },
-]
-
-interface ByAsesor {
-  name: string
-  active: number
-  next7d: number
-  spark: number[]
+interface Stats {
+  total: number
+  vigentes: number
+  aprobadas: number
+  por_iniciar: number
+  proximas_a_vencer: number
+  sin_arte: number
 }
 
-const BY_ASESOR: ByAsesor[] = [
-  { name: 'akary', active: 8,  next7d: 2, spark: [5, 6, 7, 7, 8, 8, 8] },
-  { name: 'mario', active: 12, next7d: 3, spark: [9, 10, 11, 12, 11, 12, 12] },
-  { name: 'jos',   active: 6,  next7d: 1, spark: [4, 4, 5, 5, 6, 6, 6] },
-  { name: 'nadia', active: 4,  next7d: 0, spark: [3, 3, 4, 4, 4, 4, 4] },
-]
+const SCOPE_FILTERS = ['vigentes', 'reciente'] as const
+type Scope = (typeof SCOPE_FILTERS)[number]
 
-const ARTE_COLOR: Record<Campana['arte'], string> = {
-  aprobado:      'text-state-ok',
-  'en revisión': 'text-state-info',
-  pendiente:     'text-state-warn',
-  'sin arte':    'text-state-crit',
+const STATUS_STYLE: Record<string, { kind: StatusKind; label: string }> = {
+  Aprobada:              { kind: 'ok',    label: 'Aprobada' },
+  finalizada:            { kind: 'muted', label: 'finalizada' },
+  'Por iniciar':         { kind: 'info',  label: 'Por iniciar' },
+  Rechazada:             { kind: 'crit',  label: 'Rechazada' },
+  Cancelada:             { kind: 'crit',  label: 'Cancelada' },
+  'Ajuste CTO Cliente':  { kind: 'warn',  label: 'Ajuste CTO' },
+  Atendido:              { kind: 'info',  label: 'Atendido' },
+  Compartir:             { kind: 'info',  label: 'Compartir' },
+  'Pase a ventas':       { kind: 'info',  label: 'Pase a ventas' },
+  inactiva:              { kind: 'muted', label: 'inactiva' },
+}
+
+function shortDate(iso: string) {
+  return iso.slice(0, 10)
+}
+
+function daysBetween(fromIso: string, toIso: string) {
+  const from = new Date(fromIso).getTime()
+  const to = new Date(toIso).getTime()
+  return Math.round((to - from) / (1000 * 60 * 60 * 24))
+}
+
+function daysFromToday(iso: string) {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const target = new Date(iso)
+  target.setHours(0, 0, 0, 0)
+  return Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
 }
 
 export default function Campanas() {
+  const [scope, setScope] = useState<Scope>('vigentes')
+
+  const statsQ = useQuery({
+    queryKey: ['qeb', 'campania', 'stats'],
+    queryFn: () => api.get<{ stats: Stats }>('/qeb/campania/stats').then((r) => r.stats),
+    staleTime: 60_000,
+  })
+
+  const listQ = useQuery({
+    queryKey: ['qeb', 'campania', scope],
+    queryFn: () =>
+      api
+        .get<{ campanias: Campania[] }>(`/qeb/campania?scope=${scope}&limit=50`)
+        .then((r) => r.campanias),
+    staleTime: 30_000,
+  })
+
+  const stats = statsQ.data
+  const campanias = listQ.data ?? []
+
+  const rowsWithComputed = useMemo(
+    () =>
+      campanias.map((c) => {
+        const restan = daysFromToday(c.fecha_fin)
+        return { ...c, restan }
+      }),
+    [campanias],
+  )
+
+  const statusFilter = statsQ.isError || listQ.isError ? 'crit' : 'info'
+  const bannerLabel = statsQ.isLoading
+    ? 'cargando…'
+    : statsQ.isError
+      ? 'error api'
+      : `${stats?.vigentes ?? 0} vigentes · ${stats?.total ?? 0} totales`
+
   return (
     <div className="flex flex-col gap-6 text-[13px]">
       <div className="flex items-center justify-between border-b border-border-subtle pb-4">
         <div className="flex items-center gap-3">
           <span className="text-fg-muted text-[11.5px]">negocio</span>
-          <span className="text-fg-primary text-[15px]">campanas.qeb</span>
+          <span className="text-fg-primary text-[15px]">campania.qeb</span>
           <span className="text-fg-faint">·</span>
-          <span className="text-fg-muted text-[11.5px]">activas, próximas, sin arte</span>
+          <span className="text-fg-muted text-[11.5px]">
+            datos en vivo desde u658050396_QEB
+          </span>
         </div>
-        <StatusBadge status="ok" label="42 activas" />
+        <StatusBadge status={statusFilter} label={bannerLabel} />
       </div>
 
+      {(statsQ.isError || listQ.isError) && (
+        <div className="rounded-md bg-state-critSoft border border-state-crit/30 px-3 py-2 text-[12px] text-state-crit font-mono">
+          [api] {((statsQ.error ?? listQ.error) as Error)?.message}
+        </div>
+      )}
+
       {/* KPI row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         {[
-          { label: 'activas',             value: '42', accent: 'text-fg-primary' },
-          { label: 'próximas a vencer 7d', value: '5',  accent: 'text-state-warn' },
-          { label: 'en armado',           value: '8',  accent: 'text-fg-primary' },
-          { label: 'sin arte aprobado',   value: '3',  accent: 'text-state-crit' },
+          { label: 'total',              value: stats?.total,            accent: 'text-fg-primary' },
+          { label: 'vigentes hoy',       value: stats?.vigentes,         accent: 'text-state-ok' },
+          { label: 'aprobadas',          value: stats?.aprobadas,        accent: 'text-state-ok' },
+          { label: 'por iniciar',        value: stats?.por_iniciar,      accent: 'text-state-info' },
+          { label: 'terminan en 7d',     value: stats?.proximas_a_vencer, accent: 'text-state-warn' },
+          { label: 'vigentes sin arte',  value: stats?.sin_arte,         accent: 'text-state-crit' },
         ].map((k) => (
           <div key={k.label} className="rounded-md bg-bg-card border border-border-subtle px-4 py-3">
             <div className="text-fg-faint text-[10.5px] uppercase tracking-wide">{k.label}</div>
-            <div className={cn('tabular-nums text-[22px] mt-1', k.accent)}>{k.value}</div>
+            <div className={cn('tabular-nums text-[22px] mt-1', k.accent)}>
+              {statsQ.isLoading ? '…' : (k.value ?? 0)}
+            </div>
           </div>
         ))}
       </div>
 
-      {/* Campañas próximas a vencer */}
+      {/* Lista */}
       <Section
-        title="próximas a vencer o requieren atención"
-        subtitle="ordenadas por días restantes"
+        title={scope === 'vigentes' ? 'campañas vigentes' : 'últimas 50 creadas'}
+        subtitle="join con cliente para asesor + cliente comercial"
+        right={
+          <div className="flex items-center gap-1 text-[11px]">
+            <span className="text-fg-faint">mostrar:</span>
+            {SCOPE_FILTERS.map((s) => (
+              <button
+                key={s}
+                onClick={() => setScope(s)}
+                className={cn(
+                  'px-2 h-6 rounded border',
+                  scope === s
+                    ? 'border-brand-500/40 bg-brand-500/10 text-brand-300'
+                    : 'border-border-subtle text-fg-muted hover:text-fg-primary',
+                )}
+              >
+                {s}
+              </button>
+            ))}
+            <button
+              onClick={() => {
+                statsQ.refetch()
+                listQ.refetch()
+              }}
+              disabled={listQ.isFetching}
+              className="px-2 h-6 rounded border border-border-subtle text-fg-muted hover:text-fg-primary disabled:opacity-50 ml-2"
+            >
+              {listQ.isFetching ? '…' : 'actualizar'}
+            </button>
+          </div>
+        }
       >
         <div className="mt-1">
-          <div className="grid grid-cols-[80px_1fr_160px_80px_140px_60px_120px] gap-3 px-2 py-1 text-[11px] text-fg-faint uppercase tracking-wide">
+          <div className="grid grid-cols-[80px_1fr_180px_180px_60px_140px_60px_120px] gap-3 px-2 py-1 text-[11px] text-fg-faint uppercase tracking-wide">
             <span>id</span>
             <span>nombre</span>
             <span>cliente</span>
             <span>asesor</span>
+            <span>caras</span>
             <span>periodo</span>
-            <span className="text-right">quedan</span>
-            <span className="text-right">arte</span>
+            <span className="text-right">restan</span>
+            <span className="text-right">status</span>
           </div>
           <div className="border-t border-border-subtle">
-            {CAMPANAS.map((c, i) => (
-              <div
-                key={c.id}
-                className={cn(
-                  'grid grid-cols-[80px_1fr_160px_80px_140px_60px_120px] gap-3 px-2 py-1.5 items-center hover:bg-white/[0.02] transition-colors',
-                  i !== 0 && 'border-t border-border-subtle',
-                )}
-              >
-                <span className="text-brand-300 tabular-nums">{c.id}</span>
-                <span className="text-fg-primary truncate">{c.nombre}</span>
-                <span className="text-fg-secondary truncate">{c.cliente}</span>
-                <span className="text-fg-muted">{c.asesor}</span>
-                <span className="text-fg-muted tabular-nums text-[11.5px]">
-                  {c.inicio} → {c.fin}
-                </span>
-                <span
-                  className={cn(
-                    'text-right tabular-nums',
-                    c.status === 'crit'
-                      ? 'text-state-crit'
-                      : c.status === 'warn'
-                        ? 'text-state-warn'
-                        : 'text-fg-primary',
-                  )}
-                >
-                  {c.daysLeft}d
-                </span>
-                <span className={cn('text-right text-[11.5px]', ARTE_COLOR[c.arte])}>
-                  {c.arte}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </Section>
-
-      {/* Workload por asesor */}
-      <Section title="carga por asesor" subtitle="activas + próximas 7d">
-        <div className="mt-1">
-          <div className="grid grid-cols-[140px_100px_100px_1fr] gap-3 px-2 py-1 text-[11px] text-fg-faint uppercase tracking-wide">
-            <span>asesor</span>
-            <span className="text-right">activas</span>
-            <span className="text-right">próx 7d</span>
-            <span className="text-right">tendencia</span>
-          </div>
-          <div className="border-t border-border-subtle">
-            {BY_ASESOR.map((a, i) => (
-              <div
-                key={a.name}
-                className={cn(
-                  'grid grid-cols-[140px_100px_100px_1fr] gap-3 px-2 py-1.5 items-center hover:bg-white/[0.02] transition-colors',
-                  i !== 0 && 'border-t border-border-subtle',
-                )}
-              >
-                <span className="text-fg-primary">{a.name}</span>
-                <span className="text-right text-fg-primary tabular-nums">{a.active}</span>
-                <span className="text-right text-state-warn tabular-nums">{a.next7d}</span>
-                <span className="text-right">
-                  <UnicodeSparkline data={a.spark} color="#BB9AF7" />
-                </span>
-              </div>
-            ))}
+            {listQ.isLoading && (
+              <div className="text-fg-muted text-center py-6 animate-pulse">cargando…</div>
+            )}
+            {!listQ.isLoading &&
+              rowsWithComputed.map((c, i) => {
+                const st = STATUS_STYLE[c.status] ?? { kind: 'muted' as StatusKind, label: c.status }
+                const restanColor =
+                  c.restan < 0
+                    ? 'text-fg-faint'
+                    : c.restan <= 7
+                      ? 'text-state-warn'
+                      : c.restan <= 30
+                        ? 'text-fg-primary'
+                        : 'text-fg-secondary'
+                return (
+                  <div
+                    key={c.id}
+                    className={cn(
+                      'grid grid-cols-[80px_1fr_180px_180px_60px_140px_60px_120px] gap-3 px-2 py-1.5 items-center hover:bg-white/[0.02] transition-colors',
+                      i !== 0 && 'border-t border-border-subtle',
+                    )}
+                  >
+                    <span className="text-brand-300 tabular-nums text-[11.5px]">#{c.id}</span>
+                    <span className="text-fg-primary truncate">{c.nombre}</span>
+                    <span className="text-fg-secondary truncate text-[11.5px]">
+                      {c.cliente ?? '—'}
+                    </span>
+                    <span className="text-fg-muted truncate text-[11.5px]">
+                      {c.asesor ?? '—'}
+                    </span>
+                    <span className="text-fg-muted tabular-nums text-[11.5px]">
+                      {c.total_caras}
+                    </span>
+                    <span className="text-fg-muted tabular-nums text-[11px]">
+                      {shortDate(c.fecha_inicio)} → {shortDate(c.fecha_fin)}
+                      <span className="text-fg-faint ml-1">
+                        ({daysBetween(c.fecha_inicio, c.fecha_fin)}d)
+                      </span>
+                    </span>
+                    <span className={cn('text-right tabular-nums', restanColor)}>
+                      {c.restan >= 0 ? `${c.restan}d` : '—'}
+                    </span>
+                    <span className="text-right">
+                      <StatusBadge status={st.kind} label={st.label} />
+                    </span>
+                  </div>
+                )
+              })}
+            {!listQ.isLoading && rowsWithComputed.length === 0 && !listQ.isError && (
+              <div className="text-fg-muted text-center py-4">sin resultados</div>
+            )}
           </div>
         </div>
       </Section>
