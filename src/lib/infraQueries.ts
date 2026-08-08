@@ -196,6 +196,23 @@ export function useDbLogsStats() {
   })
 }
 
+export interface CaptureStatus {
+  running: boolean
+  startedAt: string | null
+  restartCount: number
+  lastError: string | null
+  lastErrorAt: string | null
+}
+
+export function useCaptureStatus() {
+  return useQuery({
+    queryKey: ['infra', 'do', 'app', 'logs', 'capture'],
+    queryFn: () => api.get<CaptureStatus>('/infra/do/app/logs/capture'),
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  })
+}
+
 export function useLogContext(id: string | null) {
   return useQuery({
     queryKey: ['infra', 'do', 'app', 'logs', 'db', 'context', id],

@@ -11,6 +11,7 @@ import {
   useDbLogs,
   useDbLogsStats,
   useLogContext,
+  useCaptureStatus,
   type DoAppDeployment,
   type DbLogLine,
 } from '@/lib/infraQueries'
@@ -276,6 +277,7 @@ function LogsViewer() {
   const dbQ = useDbLogs(filters)
   const statsQ = useDbLogsStats()
   const ctxQ = useLogContext(expandedId)
+  const captureQ = useCaptureStatus()
 
   const lines = dbQ.data?.lines ?? []
 
@@ -312,6 +314,16 @@ function LogsViewer() {
       subtitle="tabla monitor_logs · histórico persistente · sobrevive a rebuilds de DO"
       right={
         <div className="flex items-center gap-2 text-[11px]">
+          <StatusBadge
+            status={captureQ.data?.running ? 'ok' : 'warn'}
+            label={
+              captureQ.data?.running
+                ? 'captura 24/7 activa'
+                : captureQ.data
+                  ? 'captura detenida'
+                  : '...'
+            }
+          />
           <button
             onClick={() => setLive((v) => !v)}
             className={cn(
@@ -320,9 +332,9 @@ function LogsViewer() {
                 ? 'border-state-ok/60 bg-state-ok/10 text-state-ok'
                 : 'border-border-subtle text-fg-muted hover:text-fg-primary',
             )}
-            title="al activarlo, el back abre stream a DO y captura cada línea"
+            title="además del capturer del back, ver el stream en tiempo real aquí"
           >
-            {live ? '● en vivo' : '○ en vivo'}
+            {live ? '● ver en vivo' : '○ ver en vivo'}
           </button>
           <button
             onClick={() => dbQ.refetch()}
@@ -390,6 +402,56 @@ function LogsViewer() {
               <span className="text-fg-secondary tabular-nums">{l.count.toLocaleString('es-MX')}</span>
             </span>
           ))}
+        </div>
+      )}
+
+      {/* Info sobre captura 24/7 y sleep de Render */}
+      {captureQ.data && (
+        <div
+          className={cn(
+            'mt-2 rounded-md border px-3 py-2 text-[11.5px] font-mono',
+            captureQ.data.running
+              ? 'bg-state-okSoft border-state-ok/30 text-state-ok'
+              : 'bg-bg-inset border-brand-500/30 text-brand-300',
+          )}
+        >
+          {captureQ.data.running ? (
+            <>
+              [ok] el back está capturando 24/7 cada línea de qeb-back → monitor_logs.
+              {captureQ.data.startedAt && (
+                <span className="text-fg-muted"> arrancó a las {fmtTs(captureQ.data.startedAt)}</span>
+              )}
+              {captureQ.data.restartCount > 0 && (
+                <span className="text-fg-muted"> · {captureQ.data.restartCount} reinicios</span>
+              )}
+              . Render Free se duerme tras 15min sin tráfico — para 24/7 real, configura un ping externo a{' '}
+              <a
+                href="https://uptimerobot.com"
+                target="_blank"
+                rel="noreferrer"
+                className="underline"
+              >
+                uptimerobot.com
+              </a>{' '}
+              o{' '}
+              <a
+                href="https://cron-job.org"
+                target="_blank"
+                rel="noreferrer"
+                className="underline"
+              >
+                cron-job.org
+              </a>{' '}
+              contra <span className="text-fg-primary">https://monitoreo-qeb-back.onrender.com/health</span> cada 5-10 min.
+            </>
+          ) : (
+            <>
+              [aviso] captura detenida.{' '}
+              {captureQ.data.lastError && (
+                <span>último error: {captureQ.data.lastError}</span>
+              )}
+            </>
+          )}
         </div>
       )}
 
