@@ -8,11 +8,14 @@ function phaseBadge(phase: string): { kind: StatusKind; label: string } {
   if (p === 'ACTIVE') return { kind: 'ok', label: 'listo' }
   if (p === 'BUILDING') return { kind: 'info', label: 'compilando' }
   if (p === 'DEPLOYING') return { kind: 'info', label: 'desplegando' }
-  if (p === 'PENDING_BUILD') return { kind: 'muted', label: 'en cola' }
+  if (p === 'PENDING_BUILD' || p === 'PENDING_DEPLOY') return { kind: 'muted', label: 'en cola' }
   if (p === 'ERROR') return { kind: 'crit', label: 'error' }
   if (p === 'CANCELED') return { kind: 'muted', label: 'cancelado' }
+  if (p === 'SUPERSEDED') return { kind: 'muted', label: 'reemplazado' }
   return { kind: 'muted', label: p.toLowerCase() }
 }
+
+const PHASES_WITH_REAL_DURATION = new Set(['ACTIVE', 'ERROR', 'CANCELED'])
 
 function relative(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
@@ -23,6 +26,9 @@ function relative(iso: string): string {
 }
 
 function durationOf(d: DoAppDeployment): string {
+  // Para SUPERSEDED, updated_at es cuando lo reemplazaron, no el fin del build.
+  // Solo mostramos duración cuando el estado la refleja realmente.
+  if (!PHASES_WITH_REAL_DURATION.has(d.phase.toUpperCase())) return '—'
   const start = new Date(d.created_at).getTime()
   const end = new Date(d.updated_at).getTime()
   const s = Math.max(0, Math.round((end - start) / 1000))
