@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { Section } from '@/components/ui/Section'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { useAudit, type AuditAction } from '@/stores/auditStore'
+import { useAuditQuery } from '@/lib/queries'
+import type { AuditAction } from '@/types/api'
 import { cn } from '@/lib/utils'
 
 const ACTION_COLOR: Record<AuditAction, string> = {
@@ -36,14 +37,15 @@ const KIND_FILTERS = ['all', 'auth', 'user', 'system'] as const
 type KindFilter = (typeof KIND_FILTERS)[number]
 
 function formatTs(ts: string) {
-  return ts.replace('T', ' ')
+  return ts.replace('T', ' ').replace('Z', '').slice(0, 19)
 }
 
 export default function AuditLog() {
-  const events = useAudit((s) => s.events)
-  const clear = useAudit((s) => s.clear)
+  const auditQ = useAuditQuery({ limit: 500 })
   const [kind, setKind] = useState<KindFilter>('all')
   const [search, setSearch] = useState('')
+
+  const events = auditQ.data ?? []
 
   const filtered = useMemo(
     () =>
@@ -58,15 +60,16 @@ export default function AuditLog() {
     [events, kind, search],
   )
 
-  const counts = useMemo(() => {
-    return {
+  const counts = useMemo(
+    () => ({
       total: events.length,
       loginFails: events.filter((e) => e.action === 'auth.login_fail').length,
       criticalActions: events.filter((e) =>
         ['user.disable', 'user.role_change', 'query.kill'].includes(e.action),
       ).length,
-    }
-  }, [events])
+    }),
+    [events],
+  )
 
   return (
     <div className="flex flex-col gap-6 text-[13px]">
@@ -76,20 +79,31 @@ export default function AuditLog() {
           <span className="text-fg-primary text-[15px]">audit-log.admin</span>
           <span className="text-fg-faint">·</span>
           <span className="text-fg-muted text-[11.5px]">
-            {counts.total} eventos · retención 500 más recientes
+            {auditQ.isLoading ? 'cargando…' : `${counts.total} eventos · top 500`}
           </span>
         </div>
         <StatusBadge
-          status={counts.loginFails > 0 ? 'warn' : 'ok'}
-          label={counts.loginFails > 0 ? `${counts.loginFails} login fails` : 'sin alertas'}
+          status={
+            auditQ.isError ? 'crit' : counts.loginFails > 0 ? 'warn' : 'ok'
+          }
+          label={
+            auditQ.isError
+              ? 'error api'
+              : counts.loginFails > 0
+                ? `${counts.loginFails} login fails`
+                : 'sin alertas'
+          }
         />
       </div>
 
-      {/* KPI row */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         {[
           { label: 'eventos totales',   value: counts.total,           accent: 'text-fg-primary' },
-          { label: 'login fails',       value: counts.loginFails,      accent: counts.loginFails > 0 ? 'text-state-crit' : 'text-state-ok' },
+          {
+            label: 'login fails',
+            value: counts.loginFails,
+            accent: counts.loginFails > 0 ? 'text-state-crit' : 'text-state-ok',
+          },
           { label: 'acciones críticas', value: counts.criticalActions, accent: 'text-state-warn' },
         ].map((k) => (
           <div key={k.label} className="rounded-md bg-bg-card border border-border-subtle px-4 py-3">
@@ -99,7 +113,12 @@ export default function AuditLog() {
         ))}
       </div>
 
-      {/* Feed */}
+      {auditQ.isError && (
+        <div className="rounded-md bg-state-critSoft border border-state-crit/30 px-3 py-2 text-[12px] text-state-crit font-mono">
+          [api] {(auditQ.error as Error).message}
+        </div>
+      )}
+
       <Section
         title="feed"
         subtitle="orden cronológico inverso · más reciente arriba"
@@ -128,32 +147,35 @@ export default function AuditLog() {
               className="bg-bg-card border border-border-subtle rounded px-2 h-6 text-fg-secondary outline-none focus:border-brand-500/50 min-w-[140px]"
             />
             <button
-              onClick={() => {
-                if (confirm('¿limpiar todos los eventos de audit local?')) clear()
-              }}
-              className="px-2 h-6 rounded border border-state-crit/40 text-state-crit hover:bg-state-crit/10"
+              onClick={() => auditQ.refetch()}
+              disabled={auditQ.isFetching}
+              className="px-2 h-6 rounded border border-border-subtle text-fg-muted hover:text-fg-primary disabled:opacity-50"
             >
-              clear
+              {auditQ.isFetching ? '…' : 'refresh'}
             </button>
           </div>
         }
       >
         <div className="mt-2 rounded-md bg-bg-inset border border-border-subtle px-3 py-2 font-mono text-[12.5px] max-h-[560px] overflow-auto">
-          {filtered.map((e) => (
-            <div
-              key={e.id}
-              className="grid grid-cols-[160px_180px_180px_180px_1fr] gap-3 py-0.5 hover:bg-white/[0.02] px-1 -mx-1 rounded"
-            >
-              <span className="text-fg-muted tabular-nums text-[11.5px]">
-                {formatTs(e.ts)}
-              </span>
-              <span className="text-brand-300 truncate">{e.actor}</span>
-              <span className={cn('font-medium', ACTION_COLOR[e.action])}>{e.action}</span>
-              <span className="text-fg-primary truncate">{e.target ?? '—'}</span>
-              <span className="text-fg-muted truncate">{e.details ?? ''}</span>
-            </div>
-          ))}
-          {filtered.length === 0 && (
+          {auditQ.isLoading && (
+            <div className="text-fg-muted text-center py-4 animate-pulse">cargando…</div>
+          )}
+          {!auditQ.isLoading &&
+            filtered.map((e) => (
+              <div
+                key={e.id}
+                className="grid grid-cols-[160px_180px_180px_180px_1fr] gap-3 py-0.5 hover:bg-white/[0.02] px-1 -mx-1 rounded"
+              >
+                <span className="text-fg-muted tabular-nums text-[11.5px]">
+                  {formatTs(e.ts)}
+                </span>
+                <span className="text-brand-300 truncate">{e.actor}</span>
+                <span className={cn('font-medium', ACTION_COLOR[e.action])}>{e.action}</span>
+                <span className="text-fg-primary truncate">{e.target ?? '—'}</span>
+                <span className="text-fg-muted truncate">{e.details ?? ''}</span>
+              </div>
+            ))}
+          {!auditQ.isLoading && filtered.length === 0 && !auditQ.isError && (
             <div className="text-fg-muted text-center py-4">sin eventos</div>
           )}
         </div>

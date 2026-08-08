@@ -39,8 +39,8 @@ export function Header() {
     return () => clearInterval(id)
   }, [])
 
-  function handleLogout() {
-    logout()
+  async function handleLogout() {
+    await logout()
     navigate('/login', { replace: true })
   }
 

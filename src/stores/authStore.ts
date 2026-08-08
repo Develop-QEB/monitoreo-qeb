@@ -1,8 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Role } from '@/lib/roles'
-import { useUsers } from '@/stores/usersStore'
-import { useAudit } from '@/stores/auditStore'
+import { api, setAuthToken, ApiError } from '@/lib/api'
 
 export interface AuthUser {
   id: string
@@ -11,70 +10,51 @@ export interface AuthUser {
   role: Role
 }
 
+interface LoginResponse {
+  token: string
+  user: AuthUser
+}
+
 interface AuthState {
   user: AuthUser | null
+  token: string | null
   login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>
-  logout: () => void
+  logout: () => Promise<void>
 }
 
 export const useAuth = create<AuthState>()(
   persist(
     (set, get) => ({
       user: null,
+      token: null,
       login: async (email, password) => {
-        // Mock: validar contra usersStore. En back real será fetch a /api/auth/login.
-        await new Promise((r) => setTimeout(r, 320))
-        const emailTrim = email.trim().toLowerCase()
-        const found = useUsers
-          .getState()
-          .users.find((u) => u.email.toLowerCase() === emailTrim && u.password === password)
-
-        if (!found) {
-          useAudit.getState().record({
-            actor: emailTrim || 'unknown',
-            action: 'auth.login_fail',
-            target: emailTrim || 'unknown',
-          })
-          return { ok: false, error: 'credenciales inválidas' }
+        try {
+          const res = await api.post<LoginResponse>('/auth/login', { email, password })
+          setAuthToken(res.token)
+          set({ user: res.user, token: res.token })
+          return { ok: true }
+        } catch (e) {
+          const msg = e instanceof ApiError ? e.message : 'error desconocido'
+          return { ok: false, error: msg }
         }
-        if (!found.active) {
-          useAudit.getState().record({
-            actor: emailTrim,
-            action: 'auth.login_fail',
-            target: emailTrim,
-            details: 'usuario deshabilitado',
-          })
-          return { ok: false, error: 'usuario deshabilitado' }
-        }
-
-        useUsers.getState().markLogin(found.email)
-        useAudit.getState().record({
-          actor: found.email,
-          action: 'auth.login',
-          target: found.email,
-        })
-        set({
-          user: {
-            id: found.id,
-            name: found.name,
-            email: found.email,
-            role: found.role,
-          },
-        })
-        return { ok: true }
       },
-      logout: () => {
-        const current = get().user
-        if (current) {
-          useAudit.getState().record({
-            actor: current.email,
-            action: 'auth.logout',
-            target: current.email,
-          })
+      logout: async () => {
+        if (get().token) {
+          try {
+            await api.post('/auth/logout')
+          } catch {
+            // silent — igual limpiamos local
+          }
         }
-        set({ user: null })
+        setAuthToken(null)
+        set({ user: null, token: null })
       },
     }),
-    { name: 'monitoreo-qeb:auth' },
+    {
+      name: 'monitoreo-qeb:auth',
+      onRehydrateStorage: () => (state) => {
+        if (state?.token) setAuthToken(state.token)
+      },
+    },
   ),
 )

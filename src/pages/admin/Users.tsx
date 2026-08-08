@@ -1,10 +1,15 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { Section } from '@/components/ui/Section'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { useUsers, type AdminUser } from '@/stores/usersStore'
-import { useAudit } from '@/stores/auditStore'
-import { useAuth } from '@/stores/authStore'
+import {
+  useUsersQuery,
+  useCreateUser,
+  useUpdateRole,
+  useToggleActive,
+  useResetPassword,
+} from '@/lib/queries'
 import { ROLE_LABEL, type Role } from '@/lib/roles'
+import type { AdminUser } from '@/types/api'
 import { cn } from '@/lib/utils'
 
 const ROLES: Role[] = ['admin', 'ti', 'mejora-continua']
@@ -15,13 +20,11 @@ const ROLE_COLOR: Record<Role, string> = {
 }
 
 export default function Users() {
-  const users = useUsers((s) => s.users)
-  const create = useUsers((s) => s.create)
-  const updateRole = useUsers((s) => s.updateRole)
-  const toggleActive = useUsers((s) => s.toggleActive)
-  const resetPassword = useUsers((s) => s.resetPassword)
-  const record = useAudit((s) => s.record)
-  const actor = useAuth((s) => s.user?.email ?? 'unknown')
+  const usersQ = useUsersQuery()
+  const createM = useCreateUser()
+  const updateRoleM = useUpdateRole()
+  const toggleActiveM = useToggleActive()
+  const resetPwM = useResetPassword()
 
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ name: '', email: '', password: '', role: 'ti' as Role })
@@ -29,68 +32,71 @@ export default function Users() {
   const [filterRole, setFilterRole] = useState<'all' | Role>('all')
   const [search, setSearch] = useState('')
 
+  const users = usersQ.data ?? []
+
   const filtered = useMemo(
     () =>
       users.filter(
         (u) =>
           (filterRole === 'all' || u.role === filterRole) &&
-          (search === '' ||
-            (u.name + u.email).toLowerCase().includes(search.toLowerCase())),
+          (search === '' || (u.name + u.email).toLowerCase().includes(search.toLowerCase())),
       ),
     [users, filterRole, search],
   )
 
-  const counts = useMemo(() => {
-    return {
+  const counts = useMemo(
+    () => ({
       total: users.length,
       admin: users.filter((u) => u.role === 'admin').length,
       ti: users.filter((u) => u.role === 'ti').length,
       mejora: users.filter((u) => u.role === 'mejora-continua').length,
       disabled: users.filter((u) => !u.active).length,
-    }
-  }, [users])
+    }),
+    [users],
+  )
 
-  function handleCreate(e: FormEvent) {
+  function showFlash(msg: string, ms = 4000) {
+    setFlash(msg)
+    setTimeout(() => setFlash(null), ms)
+  }
+
+  async function handleCreate(e: FormEvent) {
     e.preventDefault()
     if (!form.name || !form.email || !form.password) return
-    if (users.some((u) => u.email.toLowerCase() === form.email.toLowerCase())) {
-      setFlash('ese email ya existe')
-      setTimeout(() => setFlash(null), 3000)
-      return
+    try {
+      const u = await createM.mutateAsync(form)
+      showFlash(`usuario ${u.email} creado`)
+      setForm({ name: '', email: '', password: '', role: 'ti' })
+      setShowForm(false)
+    } catch (err) {
+      showFlash(`[error] ${(err as Error).message}`)
     }
-    const u = create(form)
-    record({ actor, action: 'user.create', target: u.email, details: `role=${u.role}` })
-    setForm({ name: '', email: '', password: '', role: 'ti' })
-    setShowForm(false)
-    setFlash(`usuario ${u.email} creado`)
-    setTimeout(() => setFlash(null), 3000)
   }
 
-  function handleRole(u: AdminUser, role: Role) {
+  async function handleRole(u: AdminUser, role: Role) {
     if (u.role === role) return
-    updateRole(u.id, role)
-    record({
-      actor,
-      action: 'user.role_change',
-      target: u.email,
-      details: `${u.role} → ${role}`,
-    })
+    try {
+      await updateRoleM.mutateAsync({ id: u.id, role })
+    } catch (err) {
+      showFlash(`[error] ${(err as Error).message}`)
+    }
   }
 
-  function handleToggle(u: AdminUser) {
-    toggleActive(u.id)
-    record({
-      actor,
-      action: u.active ? 'user.disable' : 'user.enable',
-      target: u.email,
-    })
+  async function handleToggle(u: AdminUser) {
+    try {
+      await toggleActiveM.mutateAsync(u.id)
+    } catch (err) {
+      showFlash(`[error] ${(err as Error).message}`)
+    }
   }
 
-  function handleReset(u: AdminUser) {
-    const pw = resetPassword(u.id)
-    record({ actor, action: 'user.password_reset', target: u.email })
-    setFlash(`nueva contraseña de ${u.email}: ${pw}  (mostrar una vez)`)
-    setTimeout(() => setFlash(null), 8000)
+  async function handleReset(u: AdminUser) {
+    try {
+      const pw = await resetPwM.mutateAsync(u.id)
+      showFlash(`nueva contraseña de ${u.email}: ${pw}  (se muestra una sola vez)`, 10_000)
+    } catch (err) {
+      showFlash(`[error] ${(err as Error).message}`)
+    }
   }
 
   return (
@@ -102,7 +108,16 @@ export default function Users() {
           <span className="text-fg-faint">·</span>
           <span className="text-fg-muted text-[11.5px]">gestión de usuarios y roles</span>
         </div>
-        <StatusBadge status="info" label={`${counts.total} usuarios`} />
+        <StatusBadge
+          status={usersQ.isError ? 'crit' : 'info'}
+          label={
+            usersQ.isLoading
+              ? 'cargando…'
+              : usersQ.isError
+                ? 'error api'
+                : `${counts.total} usuarios`
+          }
+        />
       </div>
 
       {/* KPI row */}
@@ -126,7 +141,12 @@ export default function Users() {
         </div>
       )}
 
-      {/* Users table + create */}
+      {usersQ.isError && (
+        <div className="rounded-md bg-state-critSoft border border-state-crit/30 px-3 py-2 text-[12px] text-state-crit font-mono">
+          [api] {(usersQ.error as Error).message}
+        </div>
+      )}
+
       <Section
         title="users"
         subtitle="tabla · cambios auto-registrados en audit-log"
@@ -191,6 +211,7 @@ export default function Users() {
               <span className="text-fg-faint text-[10.5px] uppercase tracking-wide">password</span>
               <input
                 required
+                minLength={6}
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
                 className="bg-bg-card border border-border-subtle rounded px-2 h-8 text-fg-primary outline-none focus:border-brand-500/60"
@@ -212,9 +233,10 @@ export default function Users() {
             </label>
             <button
               type="submit"
-              className="h-8 px-3 rounded bg-brand-500 hover:bg-brand-400 text-white text-[12px]"
+              disabled={createM.isPending}
+              className="h-8 px-3 rounded bg-brand-500 hover:bg-brand-400 disabled:opacity-50 text-white text-[12px]"
             >
-              create
+              {createM.isPending ? '...' : 'create'}
             </button>
           </form>
         )}
@@ -230,56 +252,67 @@ export default function Users() {
             <span className="text-right">actions</span>
           </div>
           <div className="border-t border-border-subtle">
-            {filtered.map((u, i) => (
-              <div
-                key={u.id}
-                className={cn(
-                  'grid grid-cols-[60px_140px_1fr_140px_100px_100px_180px] gap-3 px-2 py-1.5 items-center hover:bg-white/[0.02] transition-colors',
-                  i !== 0 && 'border-t border-border-subtle',
-                  !u.active && 'opacity-50',
-                )}
-              >
-                <StatusBadge status={u.active ? 'ok' : 'muted'} label={u.active ? 'active' : 'off'} />
-                <span className="text-fg-primary truncate">{u.name}</span>
-                <span className="text-fg-secondary truncate">{u.email}</span>
-                <select
-                  value={u.role}
-                  onChange={(e) => handleRole(u, e.target.value as Role)}
+            {usersQ.isLoading && (
+              <div className="text-fg-muted text-center py-6 animate-pulse">cargando…</div>
+            )}
+            {!usersQ.isLoading &&
+              filtered.map((u, i) => (
+                <div
+                  key={u.id}
                   className={cn(
-                    'bg-transparent border border-transparent hover:border-border-subtle rounded px-1 h-6 text-[12px] outline-none focus:border-brand-500/60 cursor-pointer',
-                    ROLE_COLOR[u.role],
+                    'grid grid-cols-[60px_140px_1fr_140px_100px_100px_180px] gap-3 px-2 py-1.5 items-center hover:bg-white/[0.02] transition-colors',
+                    i !== 0 && 'border-t border-border-subtle',
+                    !u.active && 'opacity-50',
                   )}
                 >
-                  {ROLES.map((r) => (
-                    <option key={r} value={r} className="bg-bg-card text-fg-primary">
-                      {ROLE_LABEL[r]}
-                    </option>
-                  ))}
-                </select>
-                <span className="text-fg-muted tabular-nums text-[11.5px]">{u.createdAt}</span>
-                <span className="text-fg-muted tabular-nums text-[11.5px]">
-                  {u.lastLogin ?? '—'}
-                </span>
-                <span className="text-right flex items-center justify-end gap-2 text-[11px]">
-                  <button
-                    onClick={() => handleReset(u)}
-                    className="text-brand-400 hover:underline"
-                  >
-                    reset-pw
-                  </button>
-                  <button
-                    onClick={() => handleToggle(u)}
+                  <StatusBadge
+                    status={u.active ? 'ok' : 'muted'}
+                    label={u.active ? 'active' : 'off'}
+                  />
+                  <span className="text-fg-primary truncate">{u.name}</span>
+                  <span className="text-fg-secondary truncate">{u.email}</span>
+                  <select
+                    value={u.role}
+                    onChange={(e) => handleRole(u, e.target.value as Role)}
                     className={cn(
-                      'hover:underline',
-                      u.active ? 'text-state-warn' : 'text-state-ok',
+                      'bg-transparent border border-transparent hover:border-border-subtle rounded px-1 h-6 text-[12px] outline-none focus:border-brand-500/60 cursor-pointer',
+                      ROLE_COLOR[u.role],
                     )}
                   >
-                    {u.active ? 'disable' : 'enable'}
-                  </button>
-                </span>
-              </div>
-            ))}
-            {filtered.length === 0 && (
+                    {ROLES.map((r) => (
+                      <option key={r} value={r} className="bg-bg-card text-fg-primary">
+                        {ROLE_LABEL[r]}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="text-fg-muted tabular-nums text-[11.5px]">
+                    {u.createdAt.slice(0, 10)}
+                  </span>
+                  <span className="text-fg-muted tabular-nums text-[11.5px]">
+                    {u.lastLoginAt ? u.lastLoginAt.slice(0, 10) : '—'}
+                  </span>
+                  <span className="text-right flex items-center justify-end gap-2 text-[11px]">
+                    <button
+                      onClick={() => handleReset(u)}
+                      disabled={resetPwM.isPending}
+                      className="text-brand-400 hover:underline disabled:opacity-50"
+                    >
+                      reset-pw
+                    </button>
+                    <button
+                      onClick={() => handleToggle(u)}
+                      disabled={toggleActiveM.isPending}
+                      className={cn(
+                        'hover:underline disabled:opacity-50',
+                        u.active ? 'text-state-warn' : 'text-state-ok',
+                      )}
+                    >
+                      {u.active ? 'disable' : 'enable'}
+                    </button>
+                  </span>
+                </div>
+              ))}
+            {!usersQ.isLoading && filtered.length === 0 && !usersQ.isError && (
               <div className="text-fg-muted text-center py-4">sin resultados</div>
             )}
           </div>
