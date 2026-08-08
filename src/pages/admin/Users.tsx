@@ -29,7 +29,7 @@ export default function Users() {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ name: '', email: '', password: '', role: 'ti' as Role })
   const [flash, setFlash] = useState<string | null>(null)
-  const [filterRole, setFilterRole] = useState<'all' | Role>('all')
+  const [filterRole, setFilterRole] = useState<'todos' | Role>('todos')
   const [search, setSearch] = useState('')
 
   const users = usersQ.data ?? []
@@ -38,7 +38,7 @@ export default function Users() {
     () =>
       users.filter(
         (u) =>
-          (filterRole === 'all' || u.role === filterRole) &&
+          (filterRole === 'todos' || u.role === filterRole) &&
           (search === '' || (u.name + u.email).toLowerCase().includes(search.toLowerCase())),
       ),
     [users, filterRole, search],
@@ -104,7 +104,7 @@ export default function Users() {
       <div className="flex items-center justify-between border-b border-border-subtle pb-4">
         <div className="flex items-center gap-3">
           <span className="text-fg-muted text-[11.5px]">admin</span>
-          <span className="text-fg-primary text-[15px]">users.admin</span>
+          <span className="text-fg-primary text-[15px]">usuarios.admin</span>
           <span className="text-fg-faint">·</span>
           <span className="text-fg-muted text-[11.5px]">gestión de usuarios y roles</span>
         </div>
@@ -137,7 +137,7 @@ export default function Users() {
 
       {flash && (
         <div className="rounded-md bg-bg-inset border border-brand-500/30 px-3 py-2 text-[12px] text-brand-300 font-mono">
-          [flash] {flash}
+          [aviso] {flash}
         </div>
       )}
 
@@ -148,12 +148,12 @@ export default function Users() {
       )}
 
       <Section
-        title="users"
-        subtitle="tabla · cambios auto-registrados en audit-log"
+        title="usuarios"
+        subtitle="tabla · los cambios se registran automáticamente en la bitácora"
         right={
           <div className="flex items-center gap-2 text-[11px]">
-            <span className="text-fg-faint">role:</span>
-            {(['all', ...ROLES] as const).map((r) => (
+            <span className="text-fg-faint">rol:</span>
+            {(['todos', ...ROLES] as const).map((r) => (
               <button
                 key={r}
                 onClick={() => setFilterRole(r)}
@@ -164,21 +164,21 @@ export default function Users() {
                     : 'border-border-subtle text-fg-muted hover:text-fg-primary',
                 )}
               >
-                {r === 'all' ? 'all' : ROLE_LABEL[r]}
+                {r === 'todos' ? 'todos' : ROLE_LABEL[r]}
               </button>
             ))}
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="grep..."
+              placeholder="buscar..."
               className="bg-bg-card border border-border-subtle rounded px-2 h-6 text-fg-secondary outline-none focus:border-brand-500/50 min-w-[120px]"
             />
             <button
               onClick={() => setShowForm((v) => !v)}
               className="px-2 h-6 rounded border border-brand-500/40 bg-brand-500/10 text-brand-300 hover:bg-brand-500/20"
             >
-              {showForm ? '− cancel' : '+ new'}
+              {showForm ? '− cancelar' : '+ nuevo'}
             </button>
           </div>
         }
@@ -189,7 +189,7 @@ export default function Users() {
             className="mt-2 mb-3 rounded-md bg-bg-inset border border-border-subtle px-4 py-3 grid grid-cols-1 md:grid-cols-[1fr_1.5fr_1fr_1fr_auto] gap-2 items-end"
           >
             <label className="flex flex-col gap-1">
-              <span className="text-fg-faint text-[10.5px] uppercase tracking-wide">name</span>
+              <span className="text-fg-faint text-[10.5px] uppercase tracking-wide">nombre</span>
               <input
                 required
                 value={form.name}
@@ -208,7 +208,7 @@ export default function Users() {
               />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-fg-faint text-[10.5px] uppercase tracking-wide">password</span>
+              <span className="text-fg-faint text-[10.5px] uppercase tracking-wide">contraseña</span>
               <input
                 required
                 minLength={6}
@@ -218,7 +218,7 @@ export default function Users() {
               />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-fg-faint text-[10.5px] uppercase tracking-wide">role</span>
+              <span className="text-fg-faint text-[10.5px] uppercase tracking-wide">rol</span>
               <select
                 value={form.role}
                 onChange={(e) => setForm({ ...form, role: e.target.value as Role })}
@@ -236,20 +236,20 @@ export default function Users() {
               disabled={createM.isPending}
               className="h-8 px-3 rounded bg-brand-500 hover:bg-brand-400 disabled:opacity-50 text-white text-[12px]"
             >
-              {createM.isPending ? '...' : 'create'}
+              {createM.isPending ? '...' : 'crear'}
             </button>
           </form>
         )}
 
         <div className="mt-1">
           <div className="grid grid-cols-[60px_140px_1fr_140px_100px_100px_180px] gap-3 px-2 py-1 text-[11px] text-fg-faint uppercase tracking-wide">
-            <span>status</span>
-            <span>name</span>
+            <span>estado</span>
+            <span>nombre</span>
             <span>email</span>
-            <span>role</span>
-            <span>created</span>
-            <span>last login</span>
-            <span className="text-right">actions</span>
+            <span>rol</span>
+            <span>creado</span>
+            <span>último acceso</span>
+            <span className="text-right">acciones</span>
           </div>
           <div className="border-t border-border-subtle">
             {usersQ.isLoading && (
@@ -267,7 +267,7 @@ export default function Users() {
                 >
                   <StatusBadge
                     status={u.active ? 'ok' : 'muted'}
-                    label={u.active ? 'active' : 'off'}
+                    label={u.active ? 'activo' : 'off'}
                   />
                   <span className="text-fg-primary truncate">{u.name}</span>
                   <span className="text-fg-secondary truncate">{u.email}</span>
@@ -297,7 +297,7 @@ export default function Users() {
                       disabled={resetPwM.isPending}
                       className="text-brand-400 hover:underline disabled:opacity-50"
                     >
-                      reset-pw
+                      resetear
                     </button>
                     <button
                       onClick={() => handleToggle(u)}
@@ -307,7 +307,7 @@ export default function Users() {
                         u.active ? 'text-state-warn' : 'text-state-ok',
                       )}
                     >
-                      {u.active ? 'disable' : 'enable'}
+                      {u.active ? 'deshabilitar' : 'habilitar'}
                     </button>
                   </span>
                 </div>

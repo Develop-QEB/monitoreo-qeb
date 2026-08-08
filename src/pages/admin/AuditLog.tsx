@@ -20,20 +20,20 @@ const ACTION_COLOR: Record<AuditAction, string> = {
 }
 
 const ACTION_KIND: Record<AuditAction, string> = {
-  'auth.login':          'auth',
-  'auth.login_fail':     'auth',
-  'auth.logout':         'auth',
-  'user.create':         'user',
-  'user.update':         'user',
-  'user.role_change':    'user',
-  'user.disable':        'user',
-  'user.enable':         'user',
-  'user.password_reset': 'user',
-  'query.kill':          'system',
-  'reserva.resolver':    'system',
+  'auth.login':          'acceso',
+  'auth.login_fail':     'acceso',
+  'auth.logout':         'acceso',
+  'user.create':         'usuario',
+  'user.update':         'usuario',
+  'user.role_change':    'usuario',
+  'user.disable':        'usuario',
+  'user.enable':         'usuario',
+  'user.password_reset': 'usuario',
+  'query.kill':          'sistema',
+  'reserva.resolver':    'sistema',
 }
 
-const KIND_FILTERS = ['all', 'auth', 'user', 'system'] as const
+const KIND_FILTERS = ['todos', 'acceso', 'usuario', 'sistema'] as const
 type KindFilter = (typeof KIND_FILTERS)[number]
 
 function formatTs(ts: string) {
@@ -42,7 +42,7 @@ function formatTs(ts: string) {
 
 export default function AuditLog() {
   const auditQ = useAuditQuery({ limit: 500 })
-  const [kind, setKind] = useState<KindFilter>('all')
+  const [kind, setKind] = useState<KindFilter>('todos')
   const [search, setSearch] = useState('')
 
   const events = auditQ.data ?? []
@@ -51,7 +51,7 @@ export default function AuditLog() {
     () =>
       events.filter(
         (e) =>
-          (kind === 'all' || ACTION_KIND[e.action] === kind) &&
+          (kind === 'todos' || ACTION_KIND[e.action] === kind) &&
           (search === '' ||
             (e.actor + e.action + (e.target ?? '') + (e.details ?? ''))
               .toLowerCase()
@@ -76,10 +76,10 @@ export default function AuditLog() {
       <div className="flex items-center justify-between border-b border-border-subtle pb-4">
         <div className="flex items-center gap-3">
           <span className="text-fg-muted text-[11.5px]">admin</span>
-          <span className="text-fg-primary text-[15px]">audit-log.admin</span>
+          <span className="text-fg-primary text-[15px]">bitacora.admin</span>
           <span className="text-fg-faint">·</span>
           <span className="text-fg-muted text-[11.5px]">
-            {auditQ.isLoading ? 'cargando…' : `${counts.total} eventos · top 500`}
+            {auditQ.isLoading ? 'cargando…' : `${counts.total} eventos · últimos 500`}
           </span>
         </div>
         <StatusBadge
@@ -90,7 +90,7 @@ export default function AuditLog() {
             auditQ.isError
               ? 'error api'
               : counts.loginFails > 0
-                ? `${counts.loginFails} login fails`
+                ? `${counts.loginFails} logins fallidos`
                 : 'sin alertas'
           }
         />
@@ -100,7 +100,7 @@ export default function AuditLog() {
         {[
           { label: 'eventos totales',   value: counts.total,           accent: 'text-fg-primary' },
           {
-            label: 'login fails',
+            label: 'logins fallidos',
             value: counts.loginFails,
             accent: counts.loginFails > 0 ? 'text-state-crit' : 'text-state-ok',
           },
@@ -124,7 +124,7 @@ export default function AuditLog() {
         subtitle="orden cronológico inverso · más reciente arriba"
         right={
           <div className="flex items-center gap-2 text-[11px]">
-            <span className="text-fg-faint">kind:</span>
+            <span className="text-fg-faint">tipo:</span>
             {KIND_FILTERS.map((k) => (
               <button
                 key={k}
@@ -143,7 +143,7 @@ export default function AuditLog() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="grep..."
+              placeholder="buscar..."
               className="bg-bg-card border border-border-subtle rounded px-2 h-6 text-fg-secondary outline-none focus:border-brand-500/50 min-w-[140px]"
             />
             <button
@@ -151,7 +151,7 @@ export default function AuditLog() {
               disabled={auditQ.isFetching}
               className="px-2 h-6 rounded border border-border-subtle text-fg-muted hover:text-fg-primary disabled:opacity-50"
             >
-              {auditQ.isFetching ? '…' : 'refresh'}
+              {auditQ.isFetching ? '…' : 'actualizar'}
             </button>
           </div>
         }

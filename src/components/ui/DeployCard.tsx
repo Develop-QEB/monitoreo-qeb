@@ -6,12 +6,12 @@ const STATUS_STYLE: Record<
   DeployStatus,
   { label: string; text: string; dot: string; pulse: boolean }
 > = {
-  queued:    { label: 'queued',    text: 'text-fg-muted',    dot: 'bg-fg-muted',    pulse: true },
-  building:  { label: 'building',  text: 'text-state-info',  dot: 'bg-state-info',  pulse: true },
-  deploying: { label: 'deploying', text: 'text-brand-400',   dot: 'bg-brand-400',   pulse: true },
-  ready:     { label: 'ready',     text: 'text-state-ok',    dot: 'bg-state-ok',    pulse: false },
-  error:     { label: 'error',     text: 'text-state-crit',  dot: 'bg-state-crit',  pulse: false },
-  canceled:  { label: 'canceled',  text: 'text-fg-muted',    dot: 'bg-fg-muted',    pulse: false },
+  queued:    { label: 'en cola',      text: 'text-fg-muted',    dot: 'bg-fg-muted',    pulse: true },
+  building:  { label: 'compilando',   text: 'text-state-info',  dot: 'bg-state-info',  pulse: true },
+  deploying: { label: 'desplegando',  text: 'text-brand-400',   dot: 'bg-brand-400',   pulse: true },
+  ready:     { label: 'listo',        text: 'text-state-ok',    dot: 'bg-state-ok',    pulse: false },
+  error:     { label: 'error',        text: 'text-state-crit',  dot: 'bg-state-crit',  pulse: false },
+  canceled:  { label: 'cancelado',    text: 'text-fg-muted',    dot: 'bg-fg-muted',    pulse: false },
 }
 
 export interface Deploy {
@@ -45,7 +45,7 @@ function DeployRow({ d, primary = false }: { d: Deploy; primary?: boolean }) {
   return (
     <div
       className={cn(
-        'grid grid-cols-[16px_90px_100px_1fr_100px_120px] gap-3 items-center px-2 py-1.5 rounded',
+        'grid grid-cols-[16px_100px_100px_1fr_100px_120px] gap-3 items-center px-2 py-1.5 rounded',
         'hover:bg-white/[0.02] transition-colors',
         primary && 'text-[14px]',
       )}
@@ -54,9 +54,9 @@ function DeployRow({ d, primary = false }: { d: Deploy; primary?: boolean }) {
       <span className={cn('font-medium', s.text)}>{s.label}</span>
       <span className="text-fg-primary tabular-nums">#{d.hash}</span>
       <span className="text-fg-muted truncate">
-        <span className="text-fg-faint">branch </span>
+        <span className="text-fg-faint">rama </span>
         {d.branch}
-        <span className="text-fg-faint"> · by </span>
+        <span className="text-fg-faint"> · por </span>
         {d.actor}
       </span>
       <span className="text-fg-secondary tabular-nums text-right">{d.duration}</span>
@@ -72,7 +72,7 @@ export function DeployCard({ latest, history }: Props) {
       {history.length > 0 && (
         <>
           <div className="mt-3 mb-1 px-2 text-[11px] text-fg-faint uppercase tracking-wide">
-            history
+            historial
           </div>
           <div className="divide-y divide-border-subtle">
             {history.map((d) => (

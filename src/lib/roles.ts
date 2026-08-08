@@ -23,7 +23,7 @@ export const NAV_GROUPS: NavGroup[] = [
     key: 'monitor',
     label: 'monitoreo-qeb',
     items: [
-      { path: '/',          label: 'overview.tsx',   roles: ['admin', 'ti', 'mejora-continua'] },
+      { path: '/',          label: 'resumen.tsx',    roles: ['admin', 'ti', 'mejora-continua'] },
       { path: '/frontend',  label: 'frontend.tsx',   roles: ['admin', 'ti', 'mejora-continua'] },
       { path: '/backend',   label: 'backend.tsx',    roles: ['admin', 'ti', 'mejora-continua'] },
       { path: '/database',  label: 'database.tsx',   roles: ['admin', 'ti', 'mejora-continua'] },
@@ -43,8 +43,8 @@ export const NAV_GROUPS: NavGroup[] = [
     key: 'admin',
     label: 'admin',
     items: [
-      { path: '/admin/users',      label: 'users.tsx',      roles: ['admin'] },
-      { path: '/admin/audit-log',  label: 'audit-log.tsx',  roles: ['admin'] },
+      { path: '/admin/users',      label: 'usuarios.tsx',   roles: ['admin'] },
+      { path: '/admin/audit-log',  label: 'bitacora.tsx',   roles: ['admin'] },
     ],
   },
 ]

@@ -56,8 +56,8 @@ const RECENT_LOGINS: LoginRow[] = [
   { time: '14:15:33', user: 'nadia',    ip: '187.144.22.14',   status: 'ok',   ua: 'Chrome · Windows' },
   { time: '13:58:12', user: 'mario',    ip: '189.203.14.211',  status: 'ok',   ua: 'Chrome · Windows' },
   { time: '13:11:04', user: 'sofia',    ip: '201.148.9.44',    status: 'ok',   ua: 'Firefox · macOS' },
-  { time: '12:44:19', user: 'unknown',  ip: '45.129.244.10',   status: 'fail', ua: 'curl/7.88.1' },
-  { time: '12:44:15', user: 'unknown',  ip: '45.129.244.10',   status: 'fail', ua: 'curl/7.88.1' },
+  { time: '12:44:19', user: 'desconocido',  ip: '45.129.244.10',   status: 'fail', ua: 'curl/7.88.1' },
+  { time: '12:44:15', user: 'desconocido',  ip: '45.129.244.10',   status: 'fail', ua: 'curl/7.88.1' },
 ]
 
 const ROLE_COLOR: Record<Session['role'], string> = {
@@ -72,21 +72,21 @@ export default function Actividad() {
     <div className="flex flex-col gap-6 text-[13px]">
       <div className="flex items-center justify-between border-b border-border-subtle pb-4">
         <div className="flex items-center gap-3">
-          <span className="text-fg-muted text-[11.5px]">business</span>
+          <span className="text-fg-muted text-[11.5px]">negocio</span>
           <span className="text-fg-primary text-[15px]">actividad.qeb</span>
           <span className="text-fg-faint">·</span>
           <span className="text-fg-muted text-[11.5px]">usuarios · sesiones · tiempo real</span>
         </div>
-        <StatusBadge status="info" label="6 online ahora" />
+        <StatusBadge status="info" label="6 en línea ahora" />
       </div>
 
       {/* KPI row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: 'online ahora',   value: '6',   accent: 'text-state-info' },
-          { label: 'peak 24h',       value: '58',  accent: 'text-fg-primary' },
-          { label: 'logins 24h',     value: '124', accent: 'text-fg-primary' },
-          { label: 'failed logins',  value: '3',   accent: 'text-state-warn' },
+          { label: 'en línea ahora',  value: '6',   accent: 'text-state-info' },
+          { label: 'pico 24h',        value: '58',  accent: 'text-fg-primary' },
+          { label: 'logins 24h',      value: '124', accent: 'text-fg-primary' },
+          { label: 'logins fallidos', value: '3',   accent: 'text-state-warn' },
         ].map((k) => (
           <div key={k.label} className="rounded-md bg-bg-card border border-border-subtle px-4 py-3">
             <div className="text-fg-faint text-[10.5px] uppercase tracking-wide">{k.label}</div>
@@ -112,24 +112,24 @@ export default function Actividad() {
       {/* Live sessions */}
       <Section title="sesiones activas" subtitle="en tiempo real vía socket.io">
         <div className="mt-1">
-          <div className="grid grid-cols-[60px_100px_180px_100px_1fr_80px] gap-3 px-2 py-1 text-[11px] text-fg-faint uppercase tracking-wide">
-            <span>status</span>
-            <span>user</span>
+          <div className="grid grid-cols-[80px_100px_180px_100px_1fr_80px] gap-3 px-2 py-1 text-[11px] text-fg-faint uppercase tracking-wide">
+            <span>estado</span>
+            <span>usuario</span>
             <span>email</span>
-            <span>role</span>
-            <span>viewing</span>
-            <span className="text-right">since</span>
+            <span>rol</span>
+            <span>viendo</span>
+            <span className="text-right">desde</span>
           </div>
           <div className="border-t border-border-subtle">
             {LIVE_SESSIONS.map((s, i) => (
               <div
                 key={s.user}
                 className={cn(
-                  'grid grid-cols-[60px_100px_180px_100px_1fr_80px] gap-3 px-2 py-1.5 items-center hover:bg-white/[0.02] transition-colors',
+                  'grid grid-cols-[80px_100px_180px_100px_1fr_80px] gap-3 px-2 py-1.5 items-center hover:bg-white/[0.02] transition-colors',
                   i !== 0 && 'border-t border-border-subtle',
                 )}
               >
-                <StatusBadge status={s.active ? 'ok' : 'muted'} label={s.active ? 'live' : 'idle'} />
+                <StatusBadge status={s.active ? 'ok' : 'muted'} label={s.active ? 'en vivo' : 'inactivo'} />
                 <span className="text-fg-primary">{s.user}</span>
                 <span className="text-fg-muted truncate">{s.email}</span>
                 <span className={cn('text-[11.5px]', ROLE_COLOR[s.role])}>{s.role}</span>
@@ -147,11 +147,11 @@ export default function Actividad() {
       <Section title="más activos" subtitle="últimos 7 días · sesiones y tiempo promedio">
         <div className="mt-1">
           <div className="grid grid-cols-[120px_1fr_100px_100px_120px] gap-3 px-2 py-1 text-[11px] text-fg-faint uppercase tracking-wide">
-            <span>user</span>
+            <span>usuario</span>
             <span>email</span>
             <span className="text-right">sesiones 7d</span>
-            <span className="text-right">avg time</span>
-            <span className="text-right">trend</span>
+            <span className="text-right">tiempo prom</span>
+            <span className="text-right">tendencia</span>
           </div>
           <div className="border-t border-border-subtle">
             {TOP_USERS.map((u, i) => (
@@ -179,11 +179,11 @@ export default function Actividad() {
       <Section title="logins recientes" subtitle="24h · exitosos y fallidos">
         <div className="mt-1">
           <div className="grid grid-cols-[80px_100px_140px_60px_1fr] gap-3 px-2 py-1 text-[11px] text-fg-faint uppercase tracking-wide">
-            <span>time</span>
-            <span>user</span>
+            <span>hora</span>
+            <span>usuario</span>
             <span>ip</span>
-            <span>status</span>
-            <span>user agent</span>
+            <span>estado</span>
+            <span>navegador</span>
           </div>
           <div className="border-t border-border-subtle">
             {RECENT_LOGINS.map((l, i) => (

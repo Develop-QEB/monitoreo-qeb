@@ -4,17 +4,17 @@ import { useAuth } from '@/stores/authStore'
 import { ROLE_LABEL } from '@/lib/roles'
 
 const CRUMB: Record<string, string> = {
-  '/':                   'overview',
-  '/frontend':           'frontend',
-  '/backend':            'backend',
-  '/database':           'database',
-  '/qeb/tickets':        'qeb/tickets',
-  '/qeb/reservas':       'qeb/reservas',
-  '/qeb/campanas':       'qeb/campanas',
-  '/qeb/actividad':      'qeb/actividad',
-  '/admin/users':        'admin/users',
-  '/admin/audit-log':    'admin/audit-log',
-  '/forbidden':          'forbidden',
+  '/':                'resumen',
+  '/frontend':        'frontend',
+  '/backend':         'backend',
+  '/database':        'database',
+  '/qeb/tickets':     'qeb/tickets',
+  '/qeb/reservas':    'qeb/reservas',
+  '/qeb/campanas':    'qeb/campanas',
+  '/qeb/actividad':   'qeb/actividad',
+  '/admin/users':     'admin/usuarios',
+  '/admin/audit-log': 'admin/bitacora',
+  '/forbidden':       'acceso denegado',
 }
 
 function formatTime(d: Date) {
@@ -31,7 +31,7 @@ export function Header() {
   const navigate = useNavigate()
   const user = useAuth((s) => s.user)
   const logout = useAuth((s) => s.logout)
-  const crumb = CRUMB[pathname] ?? 'overview'
+  const crumb = CRUMB[pathname] ?? 'resumen'
 
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
@@ -61,7 +61,7 @@ export function Header() {
               <span className="absolute inline-flex h-full w-full rounded-full bg-state-ok/50 animate-ping" />
               <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-state-ok" />
             </span>
-            <span className="text-fg-secondary">live</span>
+            <span className="text-fg-secondary">en vivo</span>
           </div>
           <span className="text-fg-muted tabular-nums glyph">{formatTime(now)}</span>
 
@@ -77,7 +77,7 @@ export function Header() {
                 onClick={handleLogout}
                 className="h-7 px-2.5 rounded border border-border-subtle hover:border-state-crit/60 text-fg-muted hover:text-state-crit text-[11px] transition-colors"
               >
-                logout
+                salir
               </button>
             </div>
           )}

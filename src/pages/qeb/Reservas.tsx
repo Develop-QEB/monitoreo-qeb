@@ -47,7 +47,7 @@ export default function Reservas() {
     <div className="flex flex-col gap-6 text-[13px]">
       <div className="flex items-center justify-between border-b border-border-subtle pb-4">
         <div className="flex items-center gap-3">
-          <span className="text-fg-muted text-[11.5px]">business</span>
+          <span className="text-fg-muted text-[11.5px]">negocio</span>
           <span className="text-fg-primary text-[15px]">reservas.qeb</span>
           <span className="text-fg-faint">·</span>
           <span className="text-fg-muted text-[11.5px]">calidad de datos · qeb-mysql-prod</span>
@@ -106,7 +106,7 @@ export default function Reservas() {
                 <span className="text-right">
                   <RoleGate
                     roles={['admin', 'ti']}
-                    fallback={<span className="text-fg-faint text-[11px]">[readonly]</span>}
+                    fallback={<span className="text-fg-faint text-[11px]">[solo lectura]</span>}
                   >
                     <button className="text-brand-400 hover:underline text-[11.5px]">
                       [resolver]

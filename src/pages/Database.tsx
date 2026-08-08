@@ -94,10 +94,10 @@ interface Backup {
 }
 
 const BACKUPS: Backup[] = [
-  { date: '2026-08-07', time: '02:00', size: '812 MB', status: 'ok', label: 'daily · automatic' },
-  { date: '2026-08-06', time: '02:00', size: '811 MB', status: 'ok', label: 'daily · automatic' },
-  { date: '2026-08-05', time: '02:00', size: '810 MB', status: 'ok', label: 'daily · automatic' },
-  { date: '2026-08-04', time: '02:00', size: '808 MB', status: 'ok', label: 'daily · automatic' },
+  { date: '2026-08-07', time: '02:00', size: '812 MB', status: 'ok', label: 'diario · automático' },
+  { date: '2026-08-06', time: '02:00', size: '811 MB', status: 'ok', label: 'diario · automático' },
+  { date: '2026-08-05', time: '02:00', size: '810 MB', status: 'ok', label: 'diario · automático' },
+  { date: '2026-08-04', time: '02:00', size: '808 MB', status: 'ok', label: 'diario · automático' },
 ]
 
 const SORT_KEYS = ['p95', 'p99', 'freq', 'err'] as const
@@ -118,7 +118,7 @@ export default function Database() {
       {/* Banner */}
       <div className="flex items-center justify-between border-b border-border-subtle pb-4">
         <div className="flex items-center gap-3">
-          <span className="text-fg-muted text-[11.5px]">service</span>
+          <span className="text-fg-muted text-[11.5px]">servicio</span>
           <span className="text-fg-primary text-[15px]">database.qeb</span>
           <span className="text-fg-faint">·</span>
           <span className="text-fg-muted text-[11.5px]">mysql-do · qeb-mysql-prod · u658050396_QEB</span>
@@ -127,32 +127,32 @@ export default function Database() {
       </div>
 
       {/* Cluster resources */}
-      <Section title="resources" subtitle="cluster · db-s-2vcpu-4gb">
-        <MetricRow label="cpu"  value="38" unit="%" spark={CPU_SPARK}  sparkColor="#FF9E64" hint="threshold 40 %" />
-        <MetricRow label="ram"  value="62" unit="%" spark={RAM_SPARK}  sparkColor="#7DCFFF" hint="2.5 / 4 GB" />
-        <MetricRow label="disk" value="28" unit="%" spark={DISK_SPARK} sparkColor="#BB9AF7" hint="22 / 80 GB" />
+      <Section title="recursos" subtitle="cluster · db-s-2vcpu-4gb">
+        <MetricRow label="cpu"   value="38" unit="%"      spark={CPU_SPARK}  sparkColor="#FF9E64" hint="umbral 40 %" />
+        <MetricRow label="ram"   value="62" unit="%"      spark={RAM_SPARK}  sparkColor="#7DCFFF" hint="2.5 / 4 GB" />
+        <MetricRow label="disco" value="28" unit="%"      spark={DISK_SPARK} sparkColor="#BB9AF7" hint="22 / 80 GB" />
         <MetricRow
-          label="connections"
+          label="conexiones"
           value="47"
           unit="/ 200"
           spark={CONN_SPARK}
           sparkColor="#9ECE6A"
-          hint="idle 12 · peak 24h 89"
+          hint="inactivas 12 · pico 24h 89"
         />
       </Section>
 
       {/* Critical indexes */}
       <Section
-        title="indexes"
-        subtitle="verificación crítica · add_idx_dashboard_perf.cjs"
-        right={<StatusBadge status="ok" label="7 / 7 present" />}
+        title="índices críticos"
+        subtitle="verificación · add_idx_dashboard_perf.cjs"
+        right={<StatusBadge status="ok" label="7 / 7 presentes" />}
       >
         <div className="mt-1">
           <div className="grid grid-cols-[60px_140px_1fr_100px] gap-3 px-2 py-1 text-[11px] text-fg-faint uppercase tracking-wide">
-            <span>status</span>
-            <span>table</span>
-            <span>index</span>
-            <span className="text-right">rows</span>
+            <span>estado</span>
+            <span>tabla</span>
+            <span>índice</span>
+            <span className="text-right">filas</span>
           </div>
           <div className="border-t border-border-subtle">
             {CRITICAL_INDEXES.map((idx, i) => (
@@ -163,7 +163,7 @@ export default function Database() {
                   i !== 0 && 'border-t border-border-subtle',
                 )}
               >
-                <StatusBadge status={idx.present ? 'ok' : 'crit'} label={idx.present ? 'ok' : 'gone'} />
+                <StatusBadge status={idx.present ? 'ok' : 'crit'} label={idx.present ? 'ok' : 'borrado'} />
                 <span className="text-brand-300">{idx.table}</span>
                 <span className="text-fg-primary">{idx.name}</span>
                 <span className="text-right text-fg-muted tabular-nums">{idx.rows}</span>
@@ -174,13 +174,13 @@ export default function Database() {
       </Section>
 
       {/* Table sizes */}
-      <Section title="table sizes" subtitle="top tablas por peso">
+      <Section title="tamaño de tablas" subtitle="top tablas por peso">
         <div className="mt-1">
           <div className="grid grid-cols-[1fr_100px_100px_160px] gap-3 px-2 py-1 text-[11px] text-fg-faint uppercase tracking-wide">
-            <span>table</span>
-            <span className="text-right">rows</span>
-            <span className="text-right">size</span>
-            <span className="text-right">growth 30d</span>
+            <span>tabla</span>
+            <span className="text-right">filas</span>
+            <span className="text-right">tamaño</span>
+            <span className="text-right">crecimiento 30d</span>
           </div>
           <div className="border-t border-border-subtle">
             {TOP_TABLES.map((t, i) => (
@@ -205,11 +205,11 @@ export default function Database() {
 
       {/* Heavy queries */}
       <Section
-        title="heavy queries"
-        subtitle="últimas 24h · slow_log + app instrumentation"
+        title="queries pesadas"
+        subtitle="últimas 24h · slow_log + instrumentación en la app"
         right={
           <div className="flex items-center gap-1 text-[11px]">
-            <span className="text-fg-faint">sort:</span>
+            <span className="text-fg-faint">orden:</span>
             {SORT_KEYS.map((k) => (
               <button
                 key={k}
@@ -228,14 +228,14 @@ export default function Database() {
         }
       >
         <div className="mt-1">
-          <div className="grid grid-cols-[80px_80px_80px_70px_60px_1fr_100px] gap-3 px-2 py-1 text-[11px] text-fg-faint uppercase tracking-wide">
-            <span>status</span>
+          <div className="grid grid-cols-[80px_80px_80px_70px_60px_1fr_110px] gap-3 px-2 py-1 text-[11px] text-fg-faint uppercase tracking-wide">
+            <span>estado</span>
             <span className="text-right">p95</span>
             <span className="text-right">p99</span>
             <span className="text-right">freq</span>
             <span className="text-right">err</span>
             <span>query</span>
-            <span className="text-right">action</span>
+            <span className="text-right">acción</span>
           </div>
           <div className="border-t border-border-subtle">
             {HEAVY_QUERIES.map((q, i) => {
@@ -244,7 +244,7 @@ export default function Database() {
                 <div key={q.sql} className={cn(i !== 0 && 'border-t border-border-subtle')}>
                   <div
                     onClick={() => setExpanded(isOpen ? null : q.sql)}
-                    className="grid grid-cols-[80px_80px_80px_70px_60px_1fr_100px] gap-3 px-2 py-1.5 items-center hover:bg-white/[0.02] transition-colors cursor-pointer"
+                    className="grid grid-cols-[80px_80px_80px_70px_60px_1fr_110px] gap-3 px-2 py-1.5 items-center hover:bg-white/[0.02] transition-colors cursor-pointer"
                   >
                     <StatusBadge status={q.status} />
                     <span className={cn('text-right tabular-nums', STATUS_TEXT_COLOR[q.status])}>
@@ -264,7 +264,7 @@ export default function Database() {
                       {q.sql}
                     </span>
                     <span className="text-right text-fg-faint text-[11px]">
-                      {isOpen ? '[hide]' : '[details]'}
+                      {isOpen ? '[ocultar]' : '[detalles]'}
                     </span>
                   </div>
                   {isOpen && (
@@ -279,12 +279,12 @@ export default function Database() {
                         </span>
                         {q.hint && (
                           <span>
-                            <span className="text-fg-faint">note </span>
+                            <span className="text-fg-faint">nota </span>
                             <span className="text-state-warn">{q.hint}</span>
                           </span>
                         )}
                         <button className="ml-auto text-state-crit hover:underline">
-                          [kill running]
+                          [matar query]
                         </button>
                       </div>
                     </div>
@@ -297,14 +297,14 @@ export default function Database() {
       </Section>
 
       {/* Backups */}
-      <Section title="backups" subtitle="digitalocean automatic snapshots">
+      <Section title="respaldos" subtitle="snapshots automáticos de digitalocean">
         <div className="mt-1">
           <div className="grid grid-cols-[60px_100px_80px_100px_1fr] gap-3 px-2 py-1 text-[11px] text-fg-faint uppercase tracking-wide">
-            <span>status</span>
-            <span>date</span>
-            <span>time</span>
-            <span className="text-right">size</span>
-            <span>label</span>
+            <span>estado</span>
+            <span>fecha</span>
+            <span>hora</span>
+            <span className="text-right">tamaño</span>
+            <span>etiqueta</span>
           </div>
           <div className="border-t border-border-subtle">
             {BACKUPS.map((b, i) => (

@@ -50,7 +50,7 @@ export default function Campanas() {
     <div className="flex flex-col gap-6 text-[13px]">
       <div className="flex items-center justify-between border-b border-border-subtle pb-4">
         <div className="flex items-center gap-3">
-          <span className="text-fg-muted text-[11.5px]">business</span>
+          <span className="text-fg-muted text-[11.5px]">negocio</span>
           <span className="text-fg-primary text-[15px]">campanas.qeb</span>
           <span className="text-fg-faint">·</span>
           <span className="text-fg-muted text-[11.5px]">activas, próximas, sin arte</span>
@@ -132,7 +132,7 @@ export default function Campanas() {
             <span>asesor</span>
             <span className="text-right">activas</span>
             <span className="text-right">próx 7d</span>
-            <span className="text-right">trend</span>
+            <span className="text-right">tendencia</span>
           </div>
           <div className="border-t border-border-subtle">
             {BY_ASESOR.map((a, i) => (

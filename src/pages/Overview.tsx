@@ -48,7 +48,7 @@ const SERVICES: ServiceRow[] = [
   {
     name: 'sap-tunnel',
     route: 'quick-tunnel',
-    value: 'up · 4h 32m',
+    value: 'activo · 4h 32m',
     status: 'ok',
     spark: [],
     sparkColor: '#9ECE6A',
@@ -56,7 +56,7 @@ const SERVICES: ServiceRow[] = [
   {
     name: 'socket.io',
     route: 'ws',
-    value: '47 conn',
+    value: '47 conexiones',
     status: 'ok',
     spark: SPARK_USERS,
     sparkColor: '#7DCFFF',
@@ -72,11 +72,11 @@ interface LogRow {
 }
 
 const LOGS: LogRow[] = [
-  { time: '14:52:03', level: 'INFO', source: 'vercel.deploy', msg: 'ready', tail: '#a8f3c1' },
-  { time: '14:38:22', level: 'WARN', source: 'api.dashboard', msg: 'slow query', tail: '720 ms' },
-  { time: '14:22:11', level: 'INFO', source: 'socket.conn', msg: '47 users online' },
+  { time: '14:52:03', level: 'INFO', source: 'vercel.deploy', msg: 'listo', tail: '#a8f3c1' },
+  { time: '14:38:22', level: 'WARN', source: 'api.dashboard', msg: 'query lenta', tail: '720 ms' },
+  { time: '14:22:11', level: 'INFO', source: 'socket.conn', msg: '47 usuarios en línea' },
   { time: '13:10:04', level: 'INFO', source: 'mysql.backup', msg: 'qeb-mysql-prod', tail: '812 MB' },
-  { time: '11:02:15', level: 'INFO', source: 'sap.tunnel', msg: 'reconnected', tail: 'trycloudflare' },
+  { time: '11:02:15', level: 'INFO', source: 'sap.tunnel', msg: 'reconectado', tail: 'trycloudflare' },
   { time: '09:41:00', level: 'INFO', source: 'http.health', msg: '200 OK', tail: '168 ms' },
 ]
 
@@ -92,7 +92,7 @@ export default function Overview() {
       {/* Top banner */}
       <div className="flex items-center justify-between border-b border-border-subtle pb-4">
         <div className="flex items-baseline gap-3">
-          <span className="text-fg-muted text-[11.5px]">uptime · 30d</span>
+          <span className="text-fg-muted text-[11.5px]">disponibilidad · 30d</span>
           <span className="text-fg-primary text-[28px] font-medium tracking-tight tabular-nums leading-none">
             99.98
           </span>
@@ -103,21 +103,21 @@ export default function Overview() {
             sla <span className="text-fg-secondary">99.90 %</span>
           </span>
           <span className="text-fg-muted text-[11.5px]">
-            incidents <span className="text-fg-secondary">0</span>
+            incidentes <span className="text-fg-secondary">0</span>
           </span>
-          <StatusBadge status="ok" label="all systems ok" />
+          <StatusBadge status="ok" label="todos los sistemas operativos" />
         </div>
       </div>
 
       {/* Services */}
-      <Section title="services" subtitle="live · 5s poll">
+      <Section title="servicios" subtitle="en vivo · sondeo cada 5s">
         <div className="mt-1">
           {/* header row */}
-          <div className="grid grid-cols-[100px_120px_1fr_120px_120px] gap-3 px-2 py-1 text-[11px] text-fg-faint uppercase tracking-wide">
-            <span>status</span>
-            <span>service</span>
-            <span>route</span>
-            <span className="text-right">value</span>
+          <div className="grid grid-cols-[100px_120px_1fr_140px_120px] gap-3 px-2 py-1 text-[11px] text-fg-faint uppercase tracking-wide">
+            <span>estado</span>
+            <span>servicio</span>
+            <span>ruta</span>
+            <span className="text-right">valor</span>
             <span className="text-right">24h</span>
           </div>
           <div className="border-t border-border-subtle">
@@ -125,7 +125,7 @@ export default function Overview() {
               <div
                 key={s.name}
                 className={cn(
-                  'grid grid-cols-[100px_120px_1fr_120px_120px] gap-3 px-2 py-2 items-center hover:bg-white/[0.02] transition-colors',
+                  'grid grid-cols-[100px_120px_1fr_140px_120px] gap-3 px-2 py-2 items-center hover:bg-white/[0.02] transition-colors',
                   i !== 0 && 'border-t border-border-subtle',
                 )}
               >

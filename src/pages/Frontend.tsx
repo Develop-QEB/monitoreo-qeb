@@ -53,7 +53,7 @@ export default function Frontend() {
       {/* Service banner */}
       <div className="flex items-center justify-between border-b border-border-subtle pb-4">
         <div className="flex items-center gap-3">
-          <span className="text-fg-muted text-[11.5px]">service</span>
+          <span className="text-fg-muted text-[11.5px]">servicio</span>
           <span className="text-fg-primary text-[15px]">frontend.qeb</span>
           <span className="text-fg-faint">·</span>
           <span className="text-fg-muted text-[11.5px]">vercel · main</span>
@@ -67,16 +67,16 @@ export default function Frontend() {
             qeb.mx ↗
           </a>
         </div>
-        <StatusBadge status="ok" label="operational" />
+        <StatusBadge status="ok" label="operativo" />
       </div>
 
       {/* Deploy */}
-      <Section title="deploy" subtitle="último + historial · vercel api">
+      <Section title="despliegues" subtitle="último + historial · vercel api">
         <DeployCard latest={LATEST} history={HISTORY} />
       </Section>
 
       {/* Uptime */}
-      <Section title="uptime" subtitle="30 días · pings 60s">
+      <Section title="disponibilidad" subtitle="30 días · sondeo cada 60s">
         <div className="mt-2 px-2">
           <div className="flex items-baseline gap-3">
             <span className="text-fg-primary text-[28px] tabular-nums font-medium leading-none">
@@ -91,15 +91,15 @@ export default function Frontend() {
           </div>
           <div className="mt-2 grid grid-cols-3 gap-4 text-[11.5px] max-w-md">
             <div>
-              <div className="text-fg-faint uppercase tracking-wide text-[10.5px]">ok</div>
+              <div className="text-fg-faint uppercase tracking-wide text-[10.5px]">operativo</div>
               <div className="text-fg-primary tabular-nums">29 d 23 h 42 m</div>
             </div>
             <div>
-              <div className="text-fg-faint uppercase tracking-wide text-[10.5px]">degraded</div>
+              <div className="text-fg-faint uppercase tracking-wide text-[10.5px]">degradado</div>
               <div className="text-fg-primary tabular-nums">18 m</div>
             </div>
             <div>
-              <div className="text-fg-faint uppercase tracking-wide text-[10.5px]">down</div>
+              <div className="text-fg-faint uppercase tracking-wide text-[10.5px]">caído</div>
               <div className="text-fg-primary tabular-nums">0 m</div>
             </div>
           </div>
@@ -107,7 +107,7 @@ export default function Frontend() {
       </Section>
 
       {/* Response time */}
-      <Section title="response" subtitle="24h · p50 / p95 / p99">
+      <Section title="tiempo de respuesta" subtitle="24h · p50 / p95 / p99">
         <div className="mt-2 px-2">
           <div className="grid grid-cols-3 gap-6 max-w-lg">
             <div>
@@ -137,11 +137,11 @@ export default function Frontend() {
       </Section>
 
       {/* Rutas clave */}
-      <Section title="routes" subtitle="rutas clave · p95 24h">
+      <Section title="rutas" subtitle="rutas clave · p95 24h">
         <div className="mt-1">
           <div className="grid grid-cols-[80px_1fr_100px_180px] gap-3 px-2 py-1 text-[11px] text-fg-faint uppercase tracking-wide">
-            <span>status</span>
-            <span>path</span>
+            <span>estado</span>
+            <span>ruta</span>
             <span className="text-right">p95</span>
             <span className="text-right">24h</span>
           </div>
@@ -173,13 +173,13 @@ export default function Frontend() {
 
       {/* Runtime errors */}
       <Section
-        title="runtime errors"
-        subtitle="client-side · error boundary + window.onerror · últimas 24h"
+        title="errores del cliente"
+        subtitle="error boundary + window.onerror · últimas 24h"
         right={<span className="text-fg-muted text-[11px]">0 · 0 · 0</span>}
       >
         <div className="mt-2 grid grid-cols-3 gap-3 max-w-2xl">
           <div className="rounded-md bg-bg-card border border-border-subtle px-4 py-3">
-            <div className="text-fg-faint text-[10.5px] uppercase tracking-wide">uncaught</div>
+            <div className="text-fg-faint text-[10.5px] uppercase tracking-wide">no capturados</div>
             <div className="text-state-ok tabular-nums text-[20px] mt-1">0</div>
           </div>
           <div className="rounded-md bg-bg-card border border-border-subtle px-4 py-3">
@@ -187,12 +187,12 @@ export default function Frontend() {
             <div className="text-state-ok tabular-nums text-[20px] mt-1">0</div>
           </div>
           <div className="rounded-md bg-bg-card border border-border-subtle px-4 py-3">
-            <div className="text-fg-faint text-[10.5px] uppercase tracking-wide">fetch fail</div>
+            <div className="text-fg-faint text-[10.5px] uppercase tracking-wide">fetch fallidos</div>
             <div className="text-state-ok tabular-nums text-[20px] mt-1">0</div>
           </div>
         </div>
         <p className="mt-3 px-2 text-fg-muted text-[11.5px]">
-          $ pending&nbsp; captura client-side por conectar (error boundary + window.onerror + axios interceptor).
+          $ pendiente&nbsp; falta cablear la captura client-side (error boundary + window.onerror + interceptor de axios).
         </p>
       </Section>
     </div>

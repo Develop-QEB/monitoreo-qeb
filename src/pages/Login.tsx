@@ -44,14 +44,14 @@ export default function Login() {
           <div className="flex items-center gap-2 text-[12px]">
             <span className="text-fg-muted">monitor@qeb</span>
             <span className="text-fg-faint">·</span>
-            <span className="text-fg-secondary">auth</span>
+            <span className="text-fg-secondary">acceso</span>
           </div>
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-5">
           <div className="text-[12.5px] text-fg-primary flex items-center gap-2">
             <span className="text-fg-muted">▾</span>
-            <span>sign in</span>
+            <span>iniciar sesión</span>
           </div>
 
           <div className="pl-4 flex flex-col gap-3">
@@ -72,7 +72,7 @@ export default function Login() {
 
             <label className="flex flex-col gap-1.5">
               <span className="text-[10.5px] uppercase tracking-[0.14em] text-fg-muted">
-                password
+                contraseña
               </span>
               <input
                 type="password"
@@ -99,12 +99,12 @@ export default function Login() {
               {busy ? (
                 <>
                   <span className="animate-pulse">›</span>
-                  <span>authenticating…</span>
+                  <span>autenticando…</span>
                 </>
               ) : (
                 <>
                   <span>›</span>
-                  <span>enter</span>
+                  <span>entrar</span>
                 </>
               )}
             </button>
@@ -112,7 +112,7 @@ export default function Login() {
 
           <div className="mt-6 pl-4 text-[11.5px] text-fg-muted">
             <div className="text-fg-faint mb-1">
-              # demo seed · will hash on real back
+              # usuarios de prueba · el back real hashea las contraseñas
             </div>
             <div className="grid grid-cols-[110px_1fr] gap-x-3 gap-y-0.5 font-mono">
               <span className="text-fg-muted">admin</span>
