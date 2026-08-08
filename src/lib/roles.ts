@@ -23,10 +23,10 @@ export const NAV_GROUPS: NavGroup[] = [
     key: 'monitor',
     label: 'monitoreo-qeb',
     items: [
-      { path: '/',          label: 'resumen.tsx',    roles: ['admin', 'ti', 'mejora-continua'] },
-      { path: '/frontend',  label: 'frontend.tsx',   roles: ['admin', 'ti', 'mejora-continua'] },
-      { path: '/backend',   label: 'backend.tsx',    roles: ['admin', 'ti', 'mejora-continua'] },
-      { path: '/database',  label: 'database.tsx',   roles: ['admin', 'ti', 'mejora-continua'] },
+      { path: '/',          label: 'resumen.tsx',    roles: ['admin', 'ti'] },
+      { path: '/frontend',  label: 'frontend.tsx',   roles: ['admin', 'ti'] },
+      { path: '/backend',   label: 'backend.tsx',    roles: ['admin', 'ti'] },
+      { path: '/database',  label: 'database.tsx',   roles: ['admin', 'ti'] },
     ],
   },
   {
@@ -55,6 +55,15 @@ export function canAccess(path: string, role: Role): boolean {
     if (match) return match.roles.includes(role)
   }
   return true
+}
+
+/**
+ * Ruta a la que aterriza cada rol al loguearse (si no venían de otra).
+ * mejora-continua no ve nada de infra, entonces cae directo a tickets.
+ */
+export function defaultRouteFor(role: Role): string {
+  if (role === 'mejora-continua') return '/qeb/tickets'
+  return '/'
 }
 
 export function canAct(role: Role): boolean {

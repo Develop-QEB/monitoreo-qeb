@@ -123,7 +123,11 @@ export default function Database() {
           <span className="text-fg-faint">·</span>
           <span className="text-fg-muted text-[11.5px]">mysql-do · qeb-mysql-prod · u658050396_QEB</span>
         </div>
-        <StatusBadge status="warn" label="cpu 38%" />
+        <StatusBadge status="muted" label="mock · pendiente DO metrics" />
+      </div>
+
+      <div className="rounded-md bg-bg-inset border border-brand-500/30 px-3 py-2 text-[12px] text-brand-300 font-mono">
+        [pendiente] métricas del cluster aún son ficticias. Para CPU/RAM/disco y queries pesadas reales necesitamos DO Personal Access Token (read) para el endpoint /databases/&#123;id&#125;/metrics, más habilitar el slow_query_log en el cluster.
       </div>
 
       {/* Cluster resources */}

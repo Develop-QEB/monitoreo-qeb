@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/stores/authStore'
+import { defaultRouteFor } from '@/lib/roles'
 
 interface LocationState {
   from?: string
@@ -10,7 +11,7 @@ export default function Login() {
   const login = useAuth((s) => s.login)
   const navigate = useNavigate()
   const location = useLocation()
-  const from = (location.state as LocationState | null)?.from ?? '/'
+  const from = (location.state as LocationState | null)?.from
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -24,7 +25,11 @@ export default function Login() {
     const res = await login(email, password)
     setBusy(false)
     if (res.ok) {
-      navigate(from, { replace: true })
+      // usa la ruta a la que intentó ir, o la default de su rol
+      const target =
+        from ??
+        defaultRouteFor(useAuth.getState().user!.role)
+      navigate(target, { replace: true })
     } else {
       setError(res.error ?? 'error desconocido')
     }

@@ -120,7 +120,11 @@ export default function Backend() {
             qeb-back en DO ↗
           </a>
         </div>
-        <StatusBadge status="ok" label="operativo" />
+        <StatusBadge status="muted" label="mock · pendiente DO API" />
+      </div>
+
+      <div className="rounded-md bg-bg-inset border border-brand-500/30 px-3 py-2 text-[12px] text-brand-300 font-mono">
+        [pendiente] esta vista aún muestra datos ficticios. Para conectar deploys, CPU/RAM, logs y tunnel SAP reales necesitamos: DO Personal Access Token (read) y un log forwarder desde el droplet de qeb-back.
       </div>
 
       {/* Deploy */}

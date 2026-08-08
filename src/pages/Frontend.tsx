@@ -67,7 +67,11 @@ export default function Frontend() {
             qeb.mx ↗
           </a>
         </div>
-        <StatusBadge status="ok" label="operativo" />
+        <StatusBadge status="muted" label="mock · pendiente Vercel API" />
+      </div>
+
+      <div className="rounded-md bg-bg-inset border border-brand-500/30 px-3 py-2 text-[12px] text-brand-300 font-mono">
+        [pendiente] esta vista aún muestra datos ficticios. Para conectar deploys y uptime reales necesitamos un Vercel Access Token en <span className="text-fg-primary">vercel.com/account/tokens</span> con scope read-only.
       </div>
 
       {/* Deploy */}
