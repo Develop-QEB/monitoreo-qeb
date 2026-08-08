@@ -1,14 +1,18 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Section } from '@/components/ui/Section'
 import { StatusBadge, type StatusKind } from '@/components/ui/StatusBadge'
 import { UnicodeSparkline } from '@/components/ui/UnicodeSparkline'
-import { useState } from 'react'
 import { Prompt } from '@/components/ui/Prompt'
+import { useAuth } from '@/stores/authStore'
 import {
   useDoAppInfo,
   useDoAppDeployments,
   useDoAppMetrics,
-  useDoAppLogs,
+  useDbLogs,
+  useDbLogsStats,
+  useLogContext,
   type DoAppDeployment,
+  type DbLogLine,
 } from '@/lib/infraQueries'
 import { cn } from '@/lib/utils'
 
@@ -35,8 +39,6 @@ function relative(iso: string): string {
 }
 
 function durationOf(d: DoAppDeployment): string {
-  // Para SUPERSEDED, updated_at es cuando lo reemplazaron, no el fin del build.
-  // Solo mostramos duración cuando el estado la refleja realmente.
   if (!PHASES_WITH_REAL_DURATION.has(d.phase.toUpperCase())) return '—'
   const start = new Date(d.created_at).getTime()
   const end = new Date(d.updated_at).getTime()
@@ -45,34 +47,35 @@ function durationOf(d: DoAppDeployment): string {
   return `${Math.floor(s / 60)}m ${s % 60}s`
 }
 
-function colorForLine(raw: string): string {
-  const r = raw.toUpperCase()
-  if (r.includes('ERROR') || r.includes(' ERR ') || r.includes('EXCEPTION') || r.includes('ECONNREFUSED')) {
-    return 'text-state-crit'
-  }
-  if (r.includes('WARN')) return 'text-state-warn'
-  if (r.includes('[SOCKET]')) return 'text-state-info'
-  if (raw.match(/\s(4\d\d|5\d\d)\s/)) return 'text-state-warn'
-  if (raw.match(/\s(2\d\d|3\d\d)\s/)) return 'text-state-ok'
-  return 'text-fg-secondary'
+function colorForLevel(level: string): string {
+  const l = level.toUpperCase()
+  if (l === 'ERROR') return 'text-state-crit'
+  if (l === 'WARN') return 'text-state-warn'
+  if (l === 'DEBUG') return 'text-fg-faint'
+  return 'text-fg-muted'
 }
+
+function fmtTs(iso: string) {
+  return iso.replace('T', ' ').replace('Z', '').slice(0, 19)
+}
+
+function isoDay(d: Date) {
+  return d.toISOString().slice(0, 10)
+}
+
+const LEVELS = ['todos', 'ERROR', 'WARN', 'INFO', 'DEBUG'] as const
+type LevelFilter = (typeof LEVELS)[number]
 
 export default function Backend() {
   const appQ = useDoAppInfo()
   const depQ = useDoAppDeployments()
   const cpuQ = useDoAppMetrics('cpu_percentage')
   const memQ = useDoAppMetrics('memory_percentage')
-  const logsQ = useDoAppLogs(300)
-  const [logSearch, setLogSearch] = useState('')
   const configured = appQ.data?.configured
   const app = appQ.data?.app
   const deployments = depQ.data?.deployments ?? []
   const cpuSeries = cpuQ.data?.series?.[0]
   const memSeries = memQ.data?.series?.[0]
-  const allLogs = logsQ.data?.lines ?? []
-  const filteredLogs = logSearch
-    ? allLogs.filter((l) => l.raw.toLowerCase().includes(logSearch.toLowerCase()))
-    : allLogs
 
   return (
     <div className="flex flex-col gap-6 text-[13px]">
@@ -105,7 +108,7 @@ export default function Backend() {
 
       {!appQ.isLoading && configured === false && (
         <div className="rounded-md bg-bg-inset border border-brand-500/30 px-3 py-2 text-[12px] text-brand-300 font-mono">
-          [pendiente] configura en Render → Environment: <span className="text-fg-primary">DO_API_TOKEN</span> y <span className="text-fg-primary">DO_APP_ID_QEB_BACK</span>. El token lo generas en <span className="text-fg-secondary">cloud.digitalocean.com → API → Tokens</span> (scope read).
+          [pendiente] configura en Render → Environment: <span className="text-fg-primary">DO_API_TOKEN</span> y <span className="text-fg-primary">DO_APP_ID_QEB_BACK</span>.
         </div>
       )}
 
@@ -115,7 +118,6 @@ export default function Backend() {
         </div>
       )}
 
-      {/* Info del App */}
       {configured === true && app && (
         <Section title="app" subtitle="digitalocean apps · datos en vivo">
           <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -149,7 +151,6 @@ export default function Backend() {
         </Section>
       )}
 
-      {/* Deploys */}
       <Section title="despliegues" subtitle="digitalocean apps api">
         <div className="mt-1">
           <div className="grid grid-cols-[16px_100px_120px_1fr_120px_120px] gap-3 px-2 py-1 text-[11px] text-fg-faint uppercase tracking-wide">
@@ -199,19 +200,10 @@ export default function Backend() {
                   </div>
                 )
               })}
-            {!depQ.isLoading &&
-              (depQ.data?.configured === false || (depQ.data?.deployments?.length ?? 0) === 0) && (
-                <div className="text-fg-muted text-center py-4">
-                  {depQ.data?.configured === false
-                    ? 'aparecerán cuando configures DO_API_TOKEN + DO_APP_ID_QEB_BACK'
-                    : 'sin despliegues'}
-                </div>
-              )}
           </div>
         </div>
       </Section>
 
-      {/* Métricas CPU y RAM del app */}
       <Section
         title="cpu / memoria del app"
         subtitle="digitalocean monitoring · última hora"
@@ -253,63 +245,279 @@ export default function Backend() {
         )}
       </Section>
 
-      {/* Runtime Logs · datos reales de DO */}
-      <Section
-        title="runtime logs"
-        subtitle="digitalocean apps · últimas ~300 líneas · auto-refresh 30s"
-        right={
-          <div className="flex items-center gap-2 text-[11px]">
-            <input
-              type="text"
-              value={logSearch}
-              onChange={(e) => setLogSearch(e.target.value)}
-              placeholder="grep..."
-              className="bg-bg-card border border-border-subtle rounded px-2 h-6 text-fg-secondary outline-none focus:border-brand-500/50 min-w-[160px]"
-            />
-            <span className="text-fg-muted tabular-nums">
-              {filteredLogs.length}/{allLogs.length}
+      {/* Logs viewer con historial persistente + filtros + contexto */}
+      <LogsViewer />
+    </div>
+  )
+}
+
+function LogsViewer() {
+  const [level, setLevel] = useState<LevelFilter>('todos')
+  const [search, setSearch] = useState('')
+  const [dayFrom, setDayFrom] = useState(isoDay(new Date()))
+  const [dayTo, setDayTo] = useState(isoDay(new Date()))
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [live, setLive] = useState(false)
+  const [liveLines, setLiveLines] = useState<{ ts: string | null; msg: string; level: string }[]>([])
+  const esRef = useRef<EventSource | null>(null)
+  const token = useAuth((s) => s.token)
+
+  const filters = useMemo(
+    () => ({
+      level: level === 'todos' ? undefined : level,
+      q: search || undefined,
+      from: `${dayFrom}T00:00:00.000Z`,
+      to: `${dayTo}T23:59:59.999Z`,
+      limit: 500,
+    }),
+    [level, search, dayFrom, dayTo],
+  )
+
+  const dbQ = useDbLogs(filters)
+  const statsQ = useDbLogsStats()
+  const ctxQ = useLogContext(expandedId)
+
+  const lines = dbQ.data?.lines ?? []
+
+  // Live tail via SSE (opcional, escribe también a la DB desde el back)
+  useEffect(() => {
+    if (!live || !token) {
+      esRef.current?.close()
+      esRef.current = null
+      return
+    }
+    const url = `${(import.meta.env.VITE_API_URL ?? 'http://localhost:4001/api').replace(/\/$/, '')}/infra/do/app/logs/live?token=${encodeURIComponent(token)}`
+    const es = new EventSource(url)
+    esRef.current = es
+    es.onmessage = (e) => {
+      try {
+        const line = JSON.parse(e.data)
+        setLiveLines((prev) => [...prev, line].slice(-200))
+      } catch {
+        /* ignore */
+      }
+    }
+    es.onerror = () => {
+      // en errores dejamos la conexión (el navegador reintenta solo)
+    }
+    return () => {
+      es.close()
+      esRef.current = null
+    }
+  }, [live, token])
+
+  return (
+    <Section
+      title="runtime logs"
+      subtitle="tabla monitor_logs · histórico persistente · sobrevive a rebuilds de DO"
+      right={
+        <div className="flex items-center gap-2 text-[11px]">
+          <button
+            onClick={() => setLive((v) => !v)}
+            className={cn(
+              'px-2 h-6 rounded border',
+              live
+                ? 'border-state-ok/60 bg-state-ok/10 text-state-ok'
+                : 'border-border-subtle text-fg-muted hover:text-fg-primary',
+            )}
+            title="al activarlo, el back abre stream a DO y captura cada línea"
+          >
+            {live ? '● en vivo' : '○ en vivo'}
+          </button>
+          <button
+            onClick={() => dbQ.refetch()}
+            disabled={dbQ.isFetching}
+            className="px-2 h-6 rounded border border-border-subtle text-fg-muted hover:text-fg-primary disabled:opacity-50"
+          >
+            {dbQ.isFetching ? '…' : 'actualizar'}
+          </button>
+        </div>
+      }
+    >
+      {/* Filtros */}
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+        <span className="text-fg-faint">nivel:</span>
+        {LEVELS.map((lv) => (
+          <button
+            key={lv}
+            onClick={() => setLevel(lv)}
+            className={cn(
+              'px-2 h-6 rounded border',
+              level === lv
+                ? 'border-brand-500/40 bg-brand-500/10 text-brand-300'
+                : 'border-border-subtle text-fg-muted hover:text-fg-primary',
+            )}
+          >
+            {lv.toLowerCase()}
+          </button>
+        ))}
+        <span className="text-fg-faint ml-2">desde</span>
+        <input
+          type="date"
+          value={dayFrom}
+          onChange={(e) => setDayFrom(e.target.value)}
+          className="bg-bg-card border border-border-subtle rounded px-2 h-6 text-fg-secondary tabular-nums outline-none focus:border-brand-500/50"
+        />
+        <span className="text-fg-faint">hasta</span>
+        <input
+          type="date"
+          value={dayTo}
+          onChange={(e) => setDayTo(e.target.value)}
+          className="bg-bg-card border border-border-subtle rounded px-2 h-6 text-fg-secondary tabular-nums outline-none focus:border-brand-500/50"
+        />
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="buscar en msg..."
+          className="bg-bg-card border border-border-subtle rounded px-2 h-6 text-fg-secondary outline-none focus:border-brand-500/50 min-w-[200px] flex-1 max-w-xs"
+        />
+      </div>
+
+      {/* Stats globales de captura */}
+      {statsQ.data && (
+        <div className="mt-2 text-[11px] text-fg-muted flex flex-wrap gap-4 px-1">
+          <span>total capturado: <span className="text-fg-primary tabular-nums">{statsQ.data.total.toLocaleString('es-MX')}</span></span>
+          {statsQ.data.first_at && (
+            <span>desde: <span className="text-fg-secondary">{fmtTs(statsQ.data.first_at)}</span></span>
+          )}
+          {statsQ.data.last_at && (
+            <span>hasta: <span className="text-fg-secondary">{fmtTs(statsQ.data.last_at)}</span></span>
+          )}
+          {statsQ.data.by_level.map((l) => (
+            <span key={l.level}>
+              <span className={colorForLevel(l.level)}>{l.level}</span>:{' '}
+              <span className="text-fg-secondary tabular-nums">{l.count.toLocaleString('es-MX')}</span>
             </span>
-            <button
-              onClick={() => logsQ.refetch()}
-              disabled={logsQ.isFetching}
-              className="px-2 h-6 rounded border border-border-subtle text-fg-muted hover:text-fg-primary disabled:opacity-50"
-            >
-              {logsQ.isFetching ? '…' : 'actualizar'}
-            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Live stream si está activo */}
+      {live && (
+        <div className="mt-3 rounded-md bg-state-okSoft border border-state-ok/30 px-3 py-2 text-[12px] font-mono">
+          <div className="text-state-ok mb-1 text-[11px]">
+            [en vivo] streaming desde DO · {liveLines.length} líneas en buffer · cada una se guarda en monitor_logs
           </div>
-        }
-      >
-        <div className="mt-2 rounded-md bg-bg-inset border border-border-subtle px-3 py-2 font-mono text-[12px] max-h-[560px] overflow-auto">
-          {logsQ.isLoading && (
-            <div className="text-fg-muted text-center py-4 animate-pulse">cargando logs…</div>
-          )}
-          {logsQ.data?.error && (
-            <div className="text-state-crit py-2">[api] {logsQ.data.error}</div>
-          )}
-          {!logsQ.isLoading &&
-            filteredLogs.map((l, i) => (
-              <div
-                key={i}
-                className="grid grid-cols-[160px_1fr] gap-3 py-0.5 px-1 -mx-1 rounded hover:bg-white/[0.02]"
-              >
-                <span className="text-fg-muted tabular-nums text-[11px] truncate">
-                  {l.ts ? l.ts.replace('T', ' ').replace('Z', '').slice(0, 19) : '—'}
+          <div className="max-h-[220px] overflow-auto">
+            {liveLines.slice(-30).map((l, i) => (
+              <div key={i} className="grid grid-cols-[160px_60px_1fr] gap-2 py-0.5 text-[11.5px]">
+                <span className="text-fg-muted tabular-nums text-[11px]">
+                  {l.ts ? fmtTs(l.ts) : '—'}
                 </span>
-                <span className={cn('whitespace-pre-wrap break-words', colorForLine(l.raw))}>
-                  {l.raw}
-                </span>
+                <span className={cn('font-medium', colorForLevel(l.level))}>{l.level}</span>
+                <span className="text-fg-primary truncate">{l.msg}</span>
               </div>
             ))}
-          {!logsQ.isLoading && filteredLogs.length === 0 && (
-            <div className="text-fg-muted text-center py-3">
-              {allLogs.length === 0 ? 'sin logs disponibles' : 'sin coincidencias'}
-            </div>
-          )}
-          <div className="mt-2">
-            <Prompt />
+            {liveLines.length === 0 && (
+              <div className="text-fg-muted text-center py-2">esperando logs…</div>
+            )}
           </div>
         </div>
-      </Section>
+      )}
+
+      {/* Tabla histórica */}
+      <div className="mt-3 rounded-md bg-bg-inset border border-border-subtle px-3 py-2 font-mono text-[12px] max-h-[600px] overflow-auto">
+        {dbQ.isLoading && (
+          <div className="text-fg-muted text-center py-4 animate-pulse">cargando…</div>
+        )}
+        {dbQ.isError && (
+          <div className="text-state-crit py-2">[api] {(dbQ.error as Error).message}</div>
+        )}
+        {!dbQ.isLoading && lines.length === 0 && !dbQ.isError && (
+          <div className="text-fg-muted text-center py-4">
+            {statsQ.data && statsQ.data.total === 0
+              ? 'aún no hemos capturado logs. Activa "en vivo" arriba para que el back empiece a guardar.'
+              : 'sin resultados con estos filtros'}
+          </div>
+        )}
+        {!dbQ.isLoading &&
+          lines.map((l, i) => {
+            const isExpanded = expandedId === l.id
+            return (
+              <div
+                key={l.id}
+                className={cn(
+                  i !== 0 && 'border-t border-border-subtle',
+                  isExpanded && 'bg-white/[0.02]',
+                )}
+              >
+                <div
+                  onClick={() => setExpandedId(isExpanded ? null : l.id)}
+                  className="grid grid-cols-[160px_60px_1fr_60px] gap-3 py-0.5 px-1 -mx-1 rounded cursor-pointer hover:bg-white/[0.02]"
+                >
+                  <span className="text-fg-muted tabular-nums text-[11px]">{fmtTs(l.ts)}</span>
+                  <span className={cn('font-medium', colorForLevel(l.level))}>{l.level}</span>
+                  <span className="text-fg-primary whitespace-pre-wrap break-words">
+                    {l.msg}
+                  </span>
+                  <span className="text-fg-faint text-[11px] text-right">
+                    {isExpanded ? '[ocultar]' : '[contexto]'}
+                  </span>
+                </div>
+                {isExpanded && (
+                  <ContextPanel
+                    isLoading={ctxQ.isLoading}
+                    context={ctxQ.data?.context ?? []}
+                    targetId={l.id}
+                  />
+                )}
+              </div>
+            )
+          })}
+        <div className="mt-2">
+          <Prompt />
+        </div>
+      </div>
+    </Section>
+  )
+}
+
+function ContextPanel({
+  isLoading,
+  context,
+  targetId,
+}: {
+  isLoading: boolean
+  context: DbLogLine[]
+  targetId: string
+}) {
+  if (isLoading) {
+    return (
+      <div className="pl-4 py-2 text-fg-muted text-[11.5px] animate-pulse">
+        cargando contexto (20 líneas antes + 20 después)…
+      </div>
+    )
+  }
+  if (context.length === 0) return null
+  return (
+    <div className="pl-4 py-2 border-l-2 border-brand-500/40 bg-bg-base/40">
+      <div className="text-fg-faint text-[10.5px] uppercase tracking-wide mb-1">
+        contexto · {context.length} líneas
+      </div>
+      {context.map((c) => {
+        const isTarget = c.id === targetId
+        return (
+          <div
+            key={c.id}
+            className={cn(
+              'grid grid-cols-[160px_60px_1fr] gap-2 py-0.5 text-[11.5px]',
+              isTarget && 'bg-brand-500/10 -mx-1 px-1 rounded font-semibold',
+            )}
+          >
+            <span className="text-fg-muted tabular-nums text-[11px]">{fmtTs(c.ts)}</span>
+            <span className={cn('font-medium', colorForLevel(c.level))}>{c.level}</span>
+            <span
+              className={cn(
+                'whitespace-pre-wrap break-words',
+                isTarget ? 'text-brand-200' : 'text-fg-secondary',
+              )}
+            >
+              {c.msg}
+            </span>
+          </div>
+        )
+      })}
     </div>
   )
 }

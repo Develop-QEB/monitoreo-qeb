@@ -146,6 +146,68 @@ export function useDoAppLogs(maxLines = 300) {
   })
 }
 
+// --------- monitor_logs (histórico persistente) ---------
+
+export interface DbLogLine {
+  id: string
+  ts: string
+  level: string
+  msg: string
+}
+
+export interface DbLogsFilters {
+  level?: string
+  q?: string
+  from?: string // ISO
+  to?: string // ISO
+  limit?: number
+}
+
+export function useDbLogs(filters: DbLogsFilters) {
+  const qs = new URLSearchParams()
+  if (filters.level) qs.set('level', filters.level)
+  if (filters.q) qs.set('q', filters.q)
+  if (filters.from) qs.set('from', filters.from)
+  if (filters.to) qs.set('to', filters.to)
+  if (filters.limit) qs.set('limit', String(filters.limit))
+
+  return useQuery({
+    queryKey: ['infra', 'do', 'app', 'logs', 'db', filters],
+    queryFn: () =>
+      api.get<{ count: number; lines: DbLogLine[] }>(
+        `/infra/do/app/logs/db${qs.toString() ? '?' + qs.toString() : ''}`,
+      ),
+    staleTime: 15_000,
+  })
+}
+
+export interface DbLogsStats {
+  total: number
+  by_level: { level: string; count: number }[]
+  first_at: string | null
+  last_at: string | null
+}
+
+export function useDbLogsStats() {
+  return useQuery({
+    queryKey: ['infra', 'do', 'app', 'logs', 'db', 'stats'],
+    queryFn: () => api.get<DbLogsStats>('/infra/do/app/logs/db/stats'),
+    staleTime: 60_000,
+  })
+}
+
+export function useLogContext(id: string | null) {
+  return useQuery({
+    queryKey: ['infra', 'do', 'app', 'logs', 'db', 'context', id],
+    queryFn: () =>
+      api.get<{ target: DbLogLine; context: DbLogLine[] }>(
+        `/infra/do/app/logs/db/${id}/context?size=20`,
+      ),
+    enabled: !!id,
+    staleTime: 5 * 60_000,
+  })
+}
+
 // ------- DO Databases -------
 
 interface DoDbResp {
