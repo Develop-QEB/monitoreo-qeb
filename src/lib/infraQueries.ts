@@ -213,6 +213,31 @@ export function useCaptureStatus() {
   })
 }
 
+/**
+ * Errores recientes (últimos N minutos). Sirve para el badge de alertas
+ * en el header y el widget de overview.
+ */
+export function useRecentErrors(minutes = 15) {
+  return useQuery({
+    queryKey: ['infra', 'do', 'app', 'logs', 'recent-errors', minutes],
+    queryFn: () => {
+      const from = new Date(Date.now() - minutes * 60_000).toISOString()
+      const to = new Date().toISOString()
+      const qs = new URLSearchParams({
+        level: 'ERROR',
+        from,
+        to,
+        limit: '50',
+      })
+      return api.get<{ count: number; lines: DbLogLine[] }>(
+        `/infra/do/app/logs/db?${qs.toString()}`,
+      )
+    },
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  })
+}
+
 export function useLogContext(id: string | null) {
   return useQuery({
     queryKey: ['infra', 'do', 'app', 'logs', 'db', 'context', id],

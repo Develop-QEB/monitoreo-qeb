@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { Section } from '@/components/ui/Section'
 import { StatusBadge, type StatusKind } from '@/components/ui/StatusBadge'
 import { api } from '@/lib/api'
 import { useAuth } from '@/stores/authStore'
+import { useRecentErrors } from '@/lib/infraQueries'
 import type { AuditEvent } from '@/types/api'
 import { cn } from '@/lib/utils'
 
@@ -71,7 +73,9 @@ function formatTs(ts: string) {
 
 export default function Overview() {
   const user = useAuth((s) => s.user)
+  const navigate = useNavigate()
   const isMejora = user?.role === 'mejora-continua'
+  const errorsQ = useRecentErrors(15)
 
   const campQ = useQuery({
     queryKey: ['qeb', 'campania', 'stats'],
@@ -206,6 +210,36 @@ export default function Overview() {
                 </div>
                 <span className="text-fg-muted text-[11.5px]">{s.tag}</span>
               </a>
+            ))}
+          </div>
+        </Section>
+      )}
+
+      {/* Errores recientes — solo admin/ti (mejora-continua no ve infra) */}
+      {!isMejora && errorsQ.data && errorsQ.data.count > 0 && (
+        <Section
+          title="errores recientes del back"
+          subtitle="últimos 15 min · monitor_logs"
+          right={
+            <StatusBadge
+              status={errorsQ.data.count >= 10 ? 'crit' : 'warn'}
+              label={`${errorsQ.data.count} ERROR`}
+            />
+          }
+        >
+          <div className="mt-2 rounded-md bg-bg-inset border border-border-subtle px-3 py-2 font-mono text-[12.5px]">
+            {errorsQ.data.lines.slice(-5).map((e) => (
+              <div
+                key={e.id}
+                onClick={() => navigate('/backend')}
+                className="grid grid-cols-[160px_1fr_60px] gap-3 py-0.5 px-1 -mx-1 rounded cursor-pointer hover:bg-white/[0.02]"
+              >
+                <span className="text-fg-muted tabular-nums text-[11px]">
+                  {e.ts.replace('T', ' ').replace('Z', '').slice(0, 19)}
+                </span>
+                <span className="text-state-crit truncate">{e.msg}</span>
+                <span className="text-fg-faint text-[11px] text-right">[ver →]</span>
+              </div>
             ))}
           </div>
         </Section>

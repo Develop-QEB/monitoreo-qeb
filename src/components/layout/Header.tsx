@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/stores/authStore'
 import { ROLE_LABEL } from '@/lib/roles'
+import { useRecentErrors } from '@/lib/infraQueries'
+import { cn } from '@/lib/utils'
 
 const CRUMB: Record<string, string> = {
   '/':                'resumen',
@@ -24,6 +26,29 @@ function formatTime(d: Date) {
     second: '2-digit',
     hour12: false,
   })
+}
+
+function AlertBadge() {
+  const q = useRecentErrors(15)
+  const navigate = useNavigate()
+  const count = q.data?.count ?? 0
+  if (q.isLoading || count === 0) return null
+  const kind: 'warn' | 'crit' = count >= 10 ? 'crit' : 'warn'
+  return (
+    <button
+      onClick={() => navigate('/backend')}
+      title={`${count} errores en los últimos 15 min · click para ir a /backend`}
+      className={cn(
+        'flex items-center gap-1.5 text-[11.5px] px-2 h-6 rounded border transition-colors',
+        kind === 'crit'
+          ? 'border-state-crit/40 bg-state-crit/10 text-state-crit hover:bg-state-crit/20'
+          : 'border-state-warn/40 bg-state-warn/10 text-state-warn hover:bg-state-warn/20',
+      )}
+    >
+      <span className="h-1.5 w-1.5 rounded-full bg-current animate-pulse" />
+      <span className="tabular-nums">{count} err/15m</span>
+    </button>
+  )
 }
 
 export function Header() {
@@ -56,6 +81,7 @@ export function Header() {
         </div>
 
         <div className="ml-auto flex items-center gap-5">
+          {user && (user.role === 'admin' || user.role === 'ti') && <AlertBadge />}
           <div className="flex items-center gap-1.5">
             <span className="relative flex h-1.5 w-1.5">
               <span className="absolute inline-flex h-full w-full rounded-full bg-state-ok/50 animate-ping" />
