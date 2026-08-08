@@ -1,203 +1,145 @@
 import { Section } from '@/components/ui/Section'
-import { StatusBadge } from '@/components/ui/StatusBadge'
-import { UnicodeSparkline } from '@/components/ui/UnicodeSparkline'
-import { DeployCard, type Deploy } from '@/components/ui/DeployCard'
+import { StatusBadge, type StatusKind } from '@/components/ui/StatusBadge'
+import { useVercelDeployments, type VercelDeployment } from '@/lib/infraQueries'
 import { cn } from '@/lib/utils'
 
-const LATEST: Deploy = {
-  hash: 'a8f3c1d',
-  status: 'ready',
-  branch: 'main',
-  actor: 'akary',
-  duration: '2m 14s',
-  relative: 'hace 8 min',
+// Mapea el state de Vercel a nuestros colores
+function stateBadge(state: string): { kind: StatusKind; label: string } {
+  const s = state.toUpperCase()
+  if (s === 'READY') return { kind: 'ok', label: 'listo' }
+  if (s === 'BUILDING' || s === 'INITIALIZING') return { kind: 'info', label: 'compilando' }
+  if (s === 'QUEUED') return { kind: 'muted', label: 'en cola' }
+  if (s === 'ERROR' || s === 'FAILED') return { kind: 'crit', label: 'error' }
+  if (s === 'CANCELED') return { kind: 'muted', label: 'cancelado' }
+  return { kind: 'muted', label: s.toLowerCase() }
 }
 
-const HISTORY: Deploy[] = [
-  { hash: 'b2e4d9f', status: 'ready', branch: 'main', actor: 'akary', duration: '1m 58s', relative: 'hace 2 h' },
-  { hash: 'c1a7f28', status: 'ready', branch: 'main', actor: 'mario', duration: '3m 02s', relative: 'hace 5 h' },
-  { hash: 'e5b9c34', status: 'error', branch: 'main', actor: 'akary', duration: '48s',   relative: 'hace 1 d' },
-  { hash: 'f7d2a11', status: 'ready', branch: 'main', actor: 'mario', duration: '2m 21s', relative: 'hace 2 d' },
-]
-
-const UPTIME_30D = Array.from({ length: 30 }, (_, i) =>
-  i === 12 ? 92 : 98 + Math.round(Math.sin(i / 3) * 2),
-)
-
-const RESPONSE_24H = Array.from({ length: 48 }, (_, i) => 160 + Math.round(Math.sin(i / 4) * 30) + (i % 7))
-
-interface Endpoint {
-  path: string
-  p95: string
-  status: 'ok' | 'warn' | 'crit'
-  spark: number[]
+function relative(from: number): string {
+  const diff = Date.now() - from
+  const h = Math.round(diff / (1000 * 60 * 60))
+  if (h < 1) return `hace ${Math.round(diff / (1000 * 60))}m`
+  if (h < 24) return `hace ${h}h`
+  return `hace ${Math.round(h / 24)}d`
 }
 
-const KEY_ROUTES: Endpoint[] = [
-  { path: '/',              p95: '182 ms', status: 'ok',   spark: [180, 178, 182, 176, 172, 184, 179, 175, 180, 182] },
-  { path: '/dashboard',     p95: '284 ms', status: 'ok',   spark: [280, 275, 290, 285, 278, 292, 288, 280, 284, 284] },
-  { path: '/reservas',      p95: '246 ms', status: 'ok',   spark: [240, 245, 250, 248, 244, 250, 245, 248, 246, 246] },
-  { path: '/campanas',      p95: '198 ms', status: 'ok',   spark: [195, 200, 205, 198, 192, 208, 200, 195, 198, 198] },
-  { path: '/inventario',    p95: '410 ms', status: 'warn', spark: [380, 390, 400, 415, 420, 405, 410, 425, 410, 410] },
-]
-
-const STATUS_TEXT: Record<'ok' | 'warn' | 'crit', string> = {
-  ok: 'text-state-ok',
-  warn: 'text-state-warn',
-  crit: 'text-state-crit',
+function duration(d: VercelDeployment): string {
+  if (d.buildingAt && d.ready) {
+    const s = Math.round((d.ready - d.buildingAt) / 1000)
+    if (s < 60) return `${s}s`
+    return `${Math.floor(s / 60)}m ${s % 60}s`
+  }
+  return '—'
 }
 
 export default function Frontend() {
+  const depQ = useVercelDeployments()
+  const configured = depQ.data?.configured
+  const deployments = depQ.data?.deployments ?? []
+
   return (
     <div className="flex flex-col gap-6 text-[13px]">
-      {/* Service banner */}
       <div className="flex items-center justify-between border-b border-border-subtle pb-4">
         <div className="flex items-center gap-3">
           <span className="text-fg-muted text-[11.5px]">servicio</span>
           <span className="text-fg-primary text-[15px]">frontend.qeb</span>
           <span className="text-fg-faint">·</span>
           <span className="text-fg-muted text-[11.5px]">vercel · main</span>
-          <span className="text-fg-faint">·</span>
-          <a
-            href="https://qeb.mx"
-            target="_blank"
-            rel="noreferrer"
-            className="text-brand-400 hover:underline text-[11.5px]"
-          >
-            qeb.mx ↗
-          </a>
         </div>
-        <StatusBadge status="muted" label="mock · pendiente Vercel API" />
+        {configured ? (
+          <StatusBadge status="ok" label="vercel conectado" />
+        ) : (
+          <StatusBadge status="muted" label="sin token vercel" />
+        )}
       </div>
 
-      <div className="rounded-md bg-bg-inset border border-brand-500/30 px-3 py-2 text-[12px] text-brand-300 font-mono">
-        [pendiente] esta vista aún muestra datos ficticios. Para conectar deploys y uptime reales necesitamos un Vercel Access Token en <span className="text-fg-primary">vercel.com/account/tokens</span> con scope read-only.
-      </div>
-
-      {/* Deploy */}
-      <Section title="despliegues" subtitle="último + historial · vercel api">
-        <DeployCard latest={LATEST} history={HISTORY} />
-      </Section>
-
-      {/* Uptime */}
-      <Section title="disponibilidad" subtitle="30 días · sondeo cada 60s">
-        <div className="mt-2 px-2">
-          <div className="flex items-baseline gap-3">
-            <span className="text-fg-primary text-[28px] tabular-nums font-medium leading-none">
-              99.98
-            </span>
-            <span className="text-fg-muted">%</span>
-            <span className="text-fg-faint text-[11.5px] ml-4">sla 99.90 %</span>
-          </div>
-          <div className="mt-3 flex items-center gap-2">
-            <UnicodeSparkline data={UPTIME_30D} color="#9ECE6A" className="text-[16px]" />
-            <span className="text-fg-faint text-[11px] ml-2">30d</span>
-          </div>
-          <div className="mt-2 grid grid-cols-3 gap-4 text-[11.5px] max-w-md">
-            <div>
-              <div className="text-fg-faint uppercase tracking-wide text-[10.5px]">operativo</div>
-              <div className="text-fg-primary tabular-nums">29 d 23 h 42 m</div>
-            </div>
-            <div>
-              <div className="text-fg-faint uppercase tracking-wide text-[10.5px]">degradado</div>
-              <div className="text-fg-primary tabular-nums">18 m</div>
-            </div>
-            <div>
-              <div className="text-fg-faint uppercase tracking-wide text-[10.5px]">caído</div>
-              <div className="text-fg-primary tabular-nums">0 m</div>
-            </div>
-          </div>
+      {!depQ.isLoading && configured === false && (
+        <div className="rounded-md bg-bg-inset border border-brand-500/30 px-3 py-2 text-[12px] text-brand-300 font-mono">
+          [pendiente] configura en Render → Environment: <span className="text-fg-primary">VERCEL_TOKEN</span> y <span className="text-fg-primary">VERCEL_PROJECT_ID</span>. El token lo generas en <span className="text-fg-secondary">vercel.com/account/tokens</span> (scope read).
         </div>
-      </Section>
+      )}
 
-      {/* Response time */}
-      <Section title="tiempo de respuesta" subtitle="24h · p50 / p95 / p99">
-        <div className="mt-2 px-2">
-          <div className="grid grid-cols-3 gap-6 max-w-lg">
-            <div>
-              <div className="text-fg-faint uppercase tracking-wide text-[10.5px]">p50</div>
-              <div className="text-fg-primary tabular-nums text-[16px]">
-                180 <span className="text-fg-muted text-[12px]">ms</span>
-              </div>
-            </div>
-            <div>
-              <div className="text-fg-faint uppercase tracking-wide text-[10.5px]">p95</div>
-              <div className="text-fg-primary tabular-nums text-[16px]">
-                324 <span className="text-fg-muted text-[12px]">ms</span>
-              </div>
-            </div>
-            <div>
-              <div className="text-fg-faint uppercase tracking-wide text-[10.5px]">p99</div>
-              <div className="text-fg-primary tabular-nums text-[16px]">
-                680 <span className="text-fg-muted text-[12px]">ms</span>
-              </div>
-            </div>
-          </div>
-          <div className="mt-3">
-            <UnicodeSparkline data={RESPONSE_24H} color="#7DCFFF" className="text-[14px]" />
-            <span className="text-fg-faint text-[11px] ml-2">24h</span>
-          </div>
+      {depQ.isError && (
+        <div className="rounded-md bg-state-critSoft border border-state-crit/30 px-3 py-2 text-[12px] text-state-crit font-mono">
+          [api] {(depQ.error as Error).message}
         </div>
-      </Section>
+      )}
 
-      {/* Rutas clave */}
-      <Section title="rutas" subtitle="rutas clave · p95 24h">
+      {/* Deploys */}
+      <Section title="despliegues" subtitle="datos reales de vercel api">
         <div className="mt-1">
-          <div className="grid grid-cols-[80px_1fr_100px_180px] gap-3 px-2 py-1 text-[11px] text-fg-faint uppercase tracking-wide">
+          <div className="grid grid-cols-[16px_100px_120px_1fr_120px_120px] gap-3 px-2 py-1 text-[11px] text-fg-faint uppercase tracking-wide">
+            <span></span>
             <span>estado</span>
-            <span>ruta</span>
-            <span className="text-right">p95</span>
-            <span className="text-right">24h</span>
+            <span>hash</span>
+            <span>por</span>
+            <span className="text-right">duración</span>
+            <span className="text-right">hace</span>
           </div>
           <div className="border-t border-border-subtle">
-            {KEY_ROUTES.map((r, i) => (
-              <div
-                key={r.path}
-                className={cn(
-                  'grid grid-cols-[80px_1fr_100px_180px] gap-3 px-2 py-1.5 items-center hover:bg-white/[0.02] transition-colors',
-                  i !== 0 && 'border-t border-border-subtle',
-                )}
-              >
-                <StatusBadge status={r.status} />
-                <span className="text-fg-primary">{r.path}</span>
-                <span className={cn('text-right tabular-nums', STATUS_TEXT[r.status])}>
-                  {r.p95}
-                </span>
-                <span className="text-right">
-                  <UnicodeSparkline
-                    data={r.spark}
-                    color={r.status === 'warn' ? '#FF9E64' : '#9ECE6A'}
-                  />
-                </span>
+            {depQ.isLoading && (
+              <div className="text-fg-muted text-center py-4 animate-pulse">cargando…</div>
+            )}
+            {!depQ.isLoading &&
+              configured === true &&
+              deployments.map((d, i) => {
+                const s = stateBadge(d.state)
+                const hash = d.meta?.githubCommitSha?.slice(0, 7) ?? d.uid.slice(0, 7)
+                return (
+                  <div
+                    key={d.uid}
+                    className={cn(
+                      'grid grid-cols-[16px_100px_120px_1fr_120px_120px] gap-3 px-2 py-1.5 items-center hover:bg-white/[0.02] transition-colors',
+                      i !== 0 && 'border-t border-border-subtle',
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'h-1.5 w-1.5 rounded-full',
+                        s.kind === 'ok' ? 'bg-state-ok' :
+                        s.kind === 'crit' ? 'bg-state-crit' :
+                        s.kind === 'info' ? 'bg-state-info' :
+                        'bg-fg-muted',
+                      )}
+                    />
+                    <StatusBadge status={s.kind} label={s.label} />
+                    <span className="text-fg-primary tabular-nums font-mono text-[12px]">#{hash}</span>
+                    <span className="text-fg-muted truncate">
+                      <span className="text-fg-faint">rama </span>
+                      {d.meta?.githubCommitRef ?? d.target ?? '?'}
+                      <span className="text-fg-faint"> · por </span>
+                      {d.creator?.username ?? '?'}
+                    </span>
+                    <span className="text-right text-fg-secondary tabular-nums">
+                      {duration(d)}
+                    </span>
+                    <span className="text-right text-fg-muted tabular-nums text-[11.5px]">
+                      {relative(d.createdAt)}
+                    </span>
+                  </div>
+                )
+              })}
+            {!depQ.isLoading && configured === true && deployments.length === 0 && (
+              <div className="text-fg-muted text-center py-4">
+                sin despliegues (¿project id correcto?)
               </div>
-            ))}
+            )}
+            {!depQ.isLoading && configured === false && (
+              <div className="text-fg-muted text-center py-4">
+                despliegues aparecerán cuando configures VERCEL_TOKEN
+              </div>
+            )}
           </div>
         </div>
       </Section>
 
-      {/* Runtime errors */}
+      {/* Uptime & response — todavía requieren un servicio de monitoreo aparte */}
       <Section
-        title="errores del cliente"
-        subtitle="error boundary + window.onerror · últimas 24h"
-        right={<span className="text-fg-muted text-[11px]">0 · 0 · 0</span>}
+        title="uptime & tiempo de respuesta"
+        subtitle="requiere servicio de pings (uptimerobot, better-stack, cronjob propio…)"
       >
-        <div className="mt-2 grid grid-cols-3 gap-3 max-w-2xl">
-          <div className="rounded-md bg-bg-card border border-border-subtle px-4 py-3">
-            <div className="text-fg-faint text-[10.5px] uppercase tracking-wide">no capturados</div>
-            <div className="text-state-ok tabular-nums text-[20px] mt-1">0</div>
-          </div>
-          <div className="rounded-md bg-bg-card border border-border-subtle px-4 py-3">
-            <div className="text-fg-faint text-[10.5px] uppercase tracking-wide">boundary</div>
-            <div className="text-state-ok tabular-nums text-[20px] mt-1">0</div>
-          </div>
-          <div className="rounded-md bg-bg-card border border-border-subtle px-4 py-3">
-            <div className="text-fg-faint text-[10.5px] uppercase tracking-wide">fetch fallidos</div>
-            <div className="text-state-ok tabular-nums text-[20px] mt-1">0</div>
-          </div>
+        <div className="mt-2 rounded-md bg-bg-inset border border-brand-500/30 px-3 py-2 text-[12px] text-brand-300 font-mono">
+          [pendiente] Vercel no expone uptime por API. Opciones: correr pings desde el mismo back del monitor cada 60s y guardar en dashboard_dev, o integrar con UptimeRobot / Better Stack.
         </div>
-        <p className="mt-3 px-2 text-fg-muted text-[11.5px]">
-          $ pendiente&nbsp; falta cablear la captura client-side (error boundary + window.onerror + interceptor de axios).
-        </p>
       </Section>
     </div>
   )
