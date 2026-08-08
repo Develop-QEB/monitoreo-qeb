@@ -12,7 +12,7 @@ export default function Login() {
   const location = useLocation()
   const from = (location.state as LocationState | null)?.from ?? '/'
 
-  const [email, setEmail] = useState('develop@qeb.mx')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -110,19 +110,6 @@ export default function Login() {
             </button>
           </div>
 
-          <div className="mt-6 pl-4 text-[11.5px] text-fg-muted">
-            <div className="text-fg-faint mb-1">
-              # usuarios de prueba · el back real hashea las contraseñas
-            </div>
-            <div className="grid grid-cols-[110px_1fr] gap-x-3 gap-y-0.5 font-mono">
-              <span className="text-fg-muted">admin</span>
-              <span className="text-fg-secondary">develop@qeb.mx · changeme</span>
-              <span className="text-fg-muted">ti</span>
-              <span className="text-fg-secondary">ti@qeb.mx · changeme</span>
-              <span className="text-fg-muted">mejora-c</span>
-              <span className="text-fg-secondary">mejora@qeb.mx · changeme</span>
-            </div>
-          </div>
         </form>
       </div>
     </div>
