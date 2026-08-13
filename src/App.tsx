@@ -8,6 +8,7 @@ import Frontend from '@/pages/Frontend'
 import Backend from '@/pages/Backend'
 import Database from '@/pages/Database'
 import Spaces from '@/pages/Spaces'
+import Vps from '@/pages/Vps'
 import Tickets from '@/pages/qeb/Tickets'
 import Reservas from '@/pages/qeb/Reservas'
 import Campanas from '@/pages/qeb/Campanas'
@@ -26,6 +27,7 @@ export default function App() {
           <Route path="/backend" element={<Backend />} />
           <Route path="/database" element={<Database />} />
           <Route path="/spaces" element={<Spaces />} />
+          <Route path="/vps" element={<Vps />} />
 
           <Route path="/qeb/tickets" element={<Tickets />} />
           <Route path="/qeb/reservas" element={<Reservas />} />

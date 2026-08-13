@@ -28,6 +28,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { path: '/backend',   label: 'backend.tsx',    roles: ['admin', 'ti'] },
       { path: '/database',  label: 'database.tsx',   roles: ['admin', 'ti'] },
       { path: '/spaces',    label: 'spaces.tsx',     roles: ['admin', 'ti'] },
+      { path: '/vps',       label: 'vps.tsx',        roles: ['admin', 'ti'] },
     ],
   },
   {
