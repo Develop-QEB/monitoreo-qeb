@@ -15,6 +15,7 @@ import {
   useCaptureStatus,
   useUptimeSummary,
   useUptimeSeries,
+  useMetricsHistory,
   type DoAppDeployment,
   type DbLogLine,
 } from '@/lib/infraQueries'
@@ -324,8 +325,130 @@ export default function Backend() {
         )}
       </Section>
 
+      {/* Histórico persistente de CPU/RAM (30 días) */}
+      <MetricsHistorySection />
+
       {/* Logs viewer con historial persistente + filtros + contexto */}
       <LogsViewer />
+    </div>
+  )
+}
+
+function MetricsHistorySection() {
+  const [hours, setHours] = useState(24)
+  const cpuQ = useMetricsHistory('cpu', hours)
+  const ramQ = useMetricsHistory('ram', hours)
+
+  const RANGES = [
+    { hours: 24, label: '24h' },
+    { hours: 24 * 7, label: '7d' },
+    { hours: 24 * 30, label: '30d' },
+  ] as const
+
+  return (
+    <Section
+      title="histórico CPU / RAM"
+      subtitle="snapshot cada 5min · retención 30 días · DO monitoring solo guarda 1h"
+      right={
+        <div className="flex items-center gap-1 text-[11px]">
+          <span className="text-fg-faint">rango:</span>
+          {RANGES.map((r) => (
+            <button
+              key={r.hours}
+              onClick={() => setHours(r.hours)}
+              className={cn(
+                'px-2 h-6 rounded border',
+                hours === r.hours
+                  ? 'border-brand-500/40 bg-brand-500/10 text-brand-300'
+                  : 'border-border-subtle text-fg-muted hover:text-fg-primary',
+              )}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+      }
+    >
+      <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-3">
+        <HistoryChart
+          label="CPU histórico"
+          loading={cpuQ.isLoading}
+          data={cpuQ.data}
+          barColor="bg-brand-500/70"
+        />
+        <HistoryChart
+          label="RAM histórica"
+          loading={ramQ.isLoading}
+          data={ramQ.data}
+          barColor="bg-state-info/70"
+        />
+      </div>
+    </Section>
+  )
+}
+
+function HistoryChart({
+  label,
+  loading,
+  data,
+  barColor,
+}: {
+  label: string
+  loading?: boolean
+  data?: {
+    points: { ts: string; value: number }[]
+    avg: number | null
+    peak: number | null
+    latest: number | null
+    count: number
+  }
+  barColor: string
+}) {
+  return (
+    <div className="rounded-md bg-bg-card border border-border-subtle px-4 py-3">
+      <div className="flex items-baseline justify-between mb-2">
+        <div className="text-fg-faint text-[10.5px] uppercase tracking-wide">{label}</div>
+        <div className="text-fg-muted text-[10.5px] tabular-nums">
+          {data ? `${data.count} pts` : ''}
+        </div>
+      </div>
+      {loading ? (
+        <div className="h-24 rounded bg-bg-inset animate-pulse" />
+      ) : !data || data.points.length === 0 ? (
+        <div className="h-24 rounded bg-bg-inset border border-border-subtle flex items-center justify-center text-fg-muted text-[11.5px]">
+          sin snapshots aún (el 1º sale al arrancar el back)
+        </div>
+      ) : (
+        <div className="h-24 rounded bg-bg-inset border border-border-subtle flex items-end gap-[1px] px-1 py-1">
+          {data.points.map((p, i) => {
+            const h = Math.max(2, Math.min(100, p.value))
+            return (
+              <div
+                key={i}
+                className={cn('flex-1 min-w-[1px] rounded-sm', barColor)}
+                style={{ height: `${h}%` }}
+                title={`${p.ts.slice(0, 19).replace('T', ' ')} · ${p.value.toFixed(1)}%`}
+              />
+            )
+          })}
+        </div>
+      )}
+      <div className="mt-2 flex justify-between text-[11px] text-fg-muted tabular-nums">
+        <span>
+          <span className="text-fg-faint">avg </span>
+          {data?.avg != null ? `${data.avg.toFixed(1)}%` : '—'}
+        </span>
+        <span>
+          <span className="text-fg-faint">pico </span>
+          <span className={cn(data?.peak != null && data.peak > 85 && 'text-state-crit')}>
+            {data?.peak != null ? `${data.peak.toFixed(1)}%` : '—'}
+          </span>
+        </span>
+        <span>
+          <span className="text-fg-faint">ahora </span>
+          {data?.latest != null ? `${data.latest.toFixed(1)}%` : '—'}
+        </span>
+      </div>
     </div>
   )
 }

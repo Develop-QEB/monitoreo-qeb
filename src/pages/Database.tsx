@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Section } from '@/components/ui/Section'
 import { StatusBadge } from '@/components/ui/StatusBadge'
@@ -6,6 +7,7 @@ import {
   useDoDbCluster,
   useUptimeSummary,
   useUptimeSeries,
+  useSlowQueries,
 } from '@/lib/infraQueries'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -348,6 +350,9 @@ export default function Database() {
         </div>
       </Section>
 
+      {/* Queries lentas · performance_schema */}
+      <SlowQueriesSection />
+
       {/* Índices críticos */}
       <Section
         title="índices críticos"
@@ -451,6 +456,121 @@ function DbSparkline({
         )
       })}
     </div>
+  )
+}
+
+function SlowQueriesSection() {
+  const [orderBy, setOrderBy] = useState<'sum' | 'avg' | 'count' | 'max'>('sum')
+  const [minAvgMs, setMinAvgMs] = useState(0)
+  const [expandedDigest, setExpandedDigest] = useState<string | null>(null)
+  const q = useSlowQueries({ orderBy, limit: 20, minAvgMs })
+  const queries = q.data?.queries ?? []
+  const permissionError = q.data?.error && q.data.error.includes('monitor_readonly')
+
+  return (
+    <Section
+      title="queries lentas"
+      subtitle="top 20 desde performance_schema · sirve para cazar cuellos de botella antes de que la DB caiga"
+      right={
+        <div className="flex items-center gap-2 text-[11px]">
+          <span className="text-fg-faint">ordenar por:</span>
+          {(['sum', 'avg', 'count', 'max'] as const).map((o) => (
+            <button
+              key={o}
+              onClick={() => setOrderBy(o)}
+              className={cn(
+                'px-2 h-6 rounded border',
+                orderBy === o
+                  ? 'border-brand-500/40 bg-brand-500/10 text-brand-300'
+                  : 'border-border-subtle text-fg-muted hover:text-fg-primary',
+              )}
+            >
+              {o === 'sum' ? 'tiempo total' : o === 'avg' ? 'avg' : o === 'count' ? 'count' : 'max'}
+            </button>
+          ))}
+          <span className="text-fg-faint ml-2">min avg ms:</span>
+          <input
+            type="number"
+            min={0}
+            value={minAvgMs}
+            onChange={(e) => setMinAvgMs(Math.max(0, parseInt(e.target.value, 10) || 0))}
+            className="bg-bg-card border border-border-subtle rounded px-2 h-6 w-16 text-fg-secondary tabular-nums outline-none focus:border-brand-500/50"
+          />
+        </div>
+      }
+    >
+      {permissionError && (
+        <div className="mt-2 rounded-md bg-state-critSoft border border-state-crit/30 px-3 py-2 text-[12px] text-state-crit font-mono">
+          [permiso] {q.data?.error}
+        </div>
+      )}
+      <div className="mt-1">
+        <div className="grid grid-cols-[1fr_70px_70px_80px_80px_80px] gap-3 px-2 py-1 text-[11px] text-fg-faint uppercase tracking-wide">
+          <span>query</span>
+          <span className="text-right">count</span>
+          <span className="text-right">avg ms</span>
+          <span className="text-right">max ms</span>
+          <span className="text-right">total s</span>
+          <span className="text-right">rows/exec</span>
+        </div>
+        <div className="border-t border-border-subtle">
+          {q.isLoading && (
+            <div className="text-fg-muted text-center py-4 animate-pulse">cargando…</div>
+          )}
+          {!q.isLoading && !permissionError && queries.length === 0 && (
+            <div className="text-fg-muted text-center py-4">
+              sin queries que cumplan el filtro
+            </div>
+          )}
+          {!q.isLoading &&
+            queries.map((query, i) => {
+              const isExp = expandedDigest === query.digest
+              const avgWarn = query.avg_ms > 500
+              const avgCrit = query.avg_ms > 2000
+              return (
+                <div
+                  key={query.digest}
+                  className={cn(i !== 0 && 'border-t border-border-subtle')}
+                >
+                  <div
+                    onClick={() => setExpandedDigest(isExp ? null : query.digest)}
+                    className="grid grid-cols-[1fr_70px_70px_80px_80px_80px] gap-3 px-2 py-1.5 items-center hover:bg-white/[0.02] transition-colors cursor-pointer"
+                  >
+                    <span className="text-fg-primary font-mono text-[11.5px] truncate">
+                      {query.digest_text?.slice(0, 120) ?? '—'}
+                    </span>
+                    <span className="text-right text-fg-secondary tabular-nums">
+                      {query.count_star.toLocaleString('es-MX')}
+                    </span>
+                    <span
+                      className={cn(
+                        'text-right tabular-nums',
+                        avgCrit ? 'text-state-crit' : avgWarn ? 'text-state-warn' : 'text-fg-secondary',
+                      )}
+                    >
+                      {query.avg_ms.toFixed(1)}
+                    </span>
+                    <span className="text-right text-fg-muted tabular-nums text-[11.5px]">
+                      {query.max_ms.toFixed(0)}
+                    </span>
+                    <span className="text-right text-fg-primary tabular-nums">
+                      {(query.sum_ms / 1000).toFixed(1)}
+                    </span>
+                    <span className="text-right text-fg-muted tabular-nums text-[11.5px]">
+                      {query.rows_examined_avg.toLocaleString('es-MX')}
+                    </span>
+                  </div>
+                  {isExp && (
+                    <div className="px-4 py-2 bg-bg-inset border-l-2 border-brand-500/40 text-[11.5px] font-mono text-fg-secondary whitespace-pre-wrap break-words">
+                      {query.digest_text}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+        </div>
+      </div>
+    </Section>
   )
 }
 

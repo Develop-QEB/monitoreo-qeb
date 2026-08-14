@@ -328,6 +328,70 @@ export function useDoDbCluster() {
   })
 }
 
+// ------- Historico de CPU/RAM (snapshot cada 5min, retencion 30d) -------
+
+export interface MetricHistoryPoint {
+  ts: string
+  value: number
+}
+
+export interface MetricHistoryResp {
+  metric: 'cpu' | 'ram'
+  hours: number
+  count: number
+  avg: number | null
+  peak: number | null
+  latest: number | null
+  points: MetricHistoryPoint[]
+}
+
+export function useMetricsHistory(metric: 'cpu' | 'ram', hours: number) {
+  return useQuery({
+    queryKey: ['infra', 'do', 'app', 'metrics', 'history', metric, hours],
+    queryFn: () =>
+      api.get<MetricHistoryResp>(
+        `/infra/do/app/metrics/history?metric=${metric}&hours=${hours}`,
+      ),
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
+  })
+}
+
+// ------- Slow queries del back QEB (performance_schema) -------
+
+export interface SlowQuery {
+  digest: string
+  digest_text: string
+  count_star: number
+  avg_ms: number
+  max_ms: number
+  sum_ms: number
+  rows_examined_avg: number
+  rows_sent_avg: number
+  last_seen: string | null
+  first_seen: string | null
+}
+
+export function useSlowQueries(opts: {
+  orderBy?: 'sum' | 'avg' | 'count' | 'max'
+  limit?: number
+  minAvgMs?: number
+}) {
+  const qs = new URLSearchParams()
+  if (opts.orderBy) qs.set('orderBy', opts.orderBy)
+  if (opts.limit) qs.set('limit', String(opts.limit))
+  if (opts.minAvgMs) qs.set('minAvgMs', String(opts.minAvgMs))
+  return useQuery({
+    queryKey: ['qeb', 'slow-queries', opts],
+    queryFn: () =>
+      api.get<{ orderBy: string; minAvgMs: number; queries: SlowQuery[]; error?: string }>(
+        `/qeb/slow-queries?${qs.toString()}`,
+      ),
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+  })
+}
+
 // ------- Uptime (pings propios) -------
 
 export type UptimeTargetKey = 'front-qeb' | 'back-qeb' | 'db-qeb'
