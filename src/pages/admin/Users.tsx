@@ -1,6 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { Section } from '@/components/ui/Section'
 import { StatusBadge } from '@/components/ui/StatusBadge'
+import { LiveBadge } from '@/components/ui/LiveBadge'
 import {
   useUsersQuery,
   useCreateUser,
@@ -179,20 +180,23 @@ export default function Users() {
       <div className="flex items-center justify-between border-b border-border-subtle pb-4">
         <div className="flex items-center gap-3">
           <span className="text-fg-muted text-[11.5px]">admin</span>
-          <span className="text-fg-primary text-[15px]">usuarios.admin</span>
+          <span className="text-fg-primary text-[15px]">usuarios admin</span>
           <span className="text-fg-faint">·</span>
           <span className="text-fg-muted text-[11.5px]">gestión de usuarios y roles</span>
         </div>
-        <StatusBadge
-          status={usersQ.isError ? 'crit' : 'info'}
-          label={
-            usersQ.isLoading
-              ? 'cargando…'
-              : usersQ.isError
-                ? 'error api'
-                : `${counts.total} usuarios`
-          }
-        />
+        <div className="flex items-center gap-3">
+          <LiveBadge intervalSec={60} fetching={usersQ.isFetching} />
+          <StatusBadge
+            status={usersQ.isError ? 'crit' : 'info'}
+            label={
+              usersQ.isLoading
+                ? 'cargando…'
+                : usersQ.isError
+                  ? 'error api'
+                  : `${counts.total} usuarios`
+            }
+          />
+        </div>
       </div>
 
       {/* KPI row */}

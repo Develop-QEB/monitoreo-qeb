@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Section } from '@/components/ui/Section'
 import { StatusBadge, type StatusKind } from '@/components/ui/StatusBadge'
+import { LiveBadge } from '@/components/ui/LiveBadge'
 import { UnicodeSparkline } from '@/components/ui/UnicodeSparkline'
 import { Prompt } from '@/components/ui/Prompt'
 import { useAuth } from '@/stores/authStore'
@@ -12,6 +13,8 @@ import {
   useDbLogsStats,
   useLogContext,
   useCaptureStatus,
+  useUptimeSummary,
+  useUptimeSeries,
   type DoAppDeployment,
   type DbLogLine,
 } from '@/lib/infraQueries'
@@ -76,39 +79,42 @@ export default function Backend() {
   const depQ = useDoAppDeployments()
   const cpuQ = useDoAppMetrics('cpu_percentage')
   const memQ = useDoAppMetrics('memory_percentage')
+  const upQ = useUptimeSummary(24)
+  const seriesQ = useUptimeSeries('back-qeb', 24)
   const configured = appQ.data?.configured
   const app = appQ.data?.app
+  const plan = appQ.data?.plan
   const deployments = depQ.data?.deployments ?? []
   const cpuSeries = cpuQ.data?.series?.[0]
   const memSeries = memQ.data?.series?.[0]
+  const backUptime = upQ.data?.targets.find((t) => t.key === 'back-qeb')
 
   return (
     <div className="flex flex-col gap-6 text-[13px]">
       <div className="flex items-center justify-between border-b border-border-subtle pb-4">
         <div className="flex items-center gap-3">
           <span className="text-fg-muted text-[11.5px]">servicio</span>
-          <span className="text-fg-primary text-[15px]">backend.qeb</span>
+          <span className="text-fg-primary text-[15px]">backend qeb</span>
           <span className="text-fg-faint">·</span>
           <span className="text-fg-muted text-[11.5px]">digitalocean apps</span>
-          {app?.live_url && (
-            <>
-              <span className="text-fg-faint">·</span>
-              <a
-                href={app.live_url}
-                target="_blank"
-                rel="noreferrer"
-                className="text-brand-400 hover:underline text-[11.5px]"
-              >
-                {new URL(app.live_url).host} ↗
-              </a>
-            </>
+        </div>
+        <div className="flex items-center gap-3">
+          <LiveBadge
+            intervalSec={30}
+            fetching={
+              appQ.isFetching ||
+              depQ.isFetching ||
+              cpuQ.isFetching ||
+              memQ.isFetching ||
+              upQ.isFetching
+            }
+          />
+          {configured ? (
+            <StatusBadge status="ok" label="do api conectado" />
+          ) : (
+            <StatusBadge status="muted" label="sin token do" />
           )}
         </div>
-        {configured ? (
-          <StatusBadge status="ok" label="do api conectado" />
-        ) : (
-          <StatusBadge status="muted" label="sin token do" />
-        )}
       </div>
 
       {!appQ.isLoading && configured === false && (
@@ -125,21 +131,24 @@ export default function Backend() {
 
       {configured === true && app && (
         <Section title="app" subtitle="digitalocean apps · datos en vivo">
-          <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="rounded-md bg-bg-card border border-border-subtle px-4 py-3">
-              <div className="text-fg-faint text-[10.5px] uppercase tracking-wide">app</div>
-              <div className="text-fg-primary mt-1">{app.spec.name}</div>
-            </div>
+          <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="rounded-md bg-bg-card border border-border-subtle px-4 py-3">
               <div className="text-fg-faint text-[10.5px] uppercase tracking-wide">región</div>
               <div className="text-fg-primary mt-1">
                 {app.region?.label ?? app.spec.region}
               </div>
             </div>
-            {app.tier_slug && (
+            {plan && (
               <div className="rounded-md bg-bg-card border border-border-subtle px-4 py-3">
-                <div className="text-fg-faint text-[10.5px] uppercase tracking-wide">tier</div>
-                <div className="text-fg-primary mt-1">{app.tier_slug}</div>
+                <div className="text-fg-faint text-[10.5px] uppercase tracking-wide">plan</div>
+                <div className="text-fg-primary mt-1 text-[14px]">
+                  {plan.slug}
+                </div>
+                <div className="text-fg-muted text-[11.5px] mt-0.5">
+                  {plan.usdPerMonth != null
+                    ? `~$${plan.usdPerMonth} USD/mes`
+                    : 'precio: consultar'}
+                </div>
               </div>
             )}
             {app.active_deployment && (
@@ -148,13 +157,78 @@ export default function Backend() {
                   deploy activo
                 </div>
                 <div className="text-fg-primary mt-1 font-mono text-[12px]">
-                  {app.active_deployment.id.slice(0, 8)} · {app.active_deployment.phase}
+                  {app.active_deployment.phase}
+                </div>
+                <div className="text-fg-muted text-[11.5px] mt-0.5">
+                  desde {relative(app.active_deployment.updated_at)}
                 </div>
               </div>
             )}
           </div>
         </Section>
       )}
+
+      {/* Uptime & response — pings propios contra el back cada 60s */}
+      <Section
+        title="uptime & tiempo de respuesta"
+        subtitle="pings cada 60s desde el monitor · últimas 24h"
+      >
+        <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-3">
+          <UptimeStat
+            label="uptime 24h"
+            value={backUptime ? `${backUptime.uptimePct.toFixed(2)}%` : undefined}
+            note={backUptime ? `${backUptime.okCount}/${backUptime.count} pings ok` : ''}
+            loading={upQ.isLoading}
+            accent={
+              !backUptime
+                ? undefined
+                : backUptime.uptimePct >= 99.5
+                  ? 'text-state-ok'
+                  : backUptime.uptimePct >= 95
+                    ? 'text-state-warn'
+                    : 'text-state-crit'
+            }
+          />
+          <UptimeStat
+            label="respuesta prom."
+            value={backUptime?.avgMs != null ? `${backUptime.avgMs} ms` : undefined}
+            note="get contra el back"
+            loading={upQ.isLoading}
+          />
+          <UptimeStat
+            label="p95"
+            value={backUptime?.p95Ms != null ? `${backUptime.p95Ms} ms` : undefined}
+            note="95% de pings bajo este ms"
+            loading={upQ.isLoading}
+          />
+          <UptimeStat
+            label="último ping"
+            value={
+              backUptime?.lastPingAt
+                ? relative(backUptime.lastPingAt)
+                : undefined
+            }
+            note={
+              backUptime?.lastOk === false
+                ? 'último falló'
+                : backUptime?.lastStatus != null
+                  ? `HTTP ${backUptime.lastStatus}`
+                  : ''
+            }
+            loading={upQ.isLoading}
+            accent={backUptime?.lastOk === false ? 'text-state-crit' : undefined}
+          />
+        </div>
+
+        <div className="mt-4">
+          <BackSparkline points={seriesQ.data?.points ?? []} loading={seriesQ.isLoading} />
+          <div className="mt-1 flex items-center justify-between text-[10.5px] text-fg-faint tabular-nums">
+            <span>hace 24h</span>
+            <span>{seriesQ.data?.points.length ?? 0} pings</span>
+            <span>ahora</span>
+          </div>
+        </div>
+      </Section>
 
       <Section title="despliegues" subtitle="digitalocean apps api">
         <div className="mt-1">
@@ -288,6 +362,24 @@ function LogsViewer() {
   const captureQ = useCaptureStatus()
 
   const lines = dbQ.data?.lines ?? []
+
+  // Auto-scroll al fondo (los mas recientes) cuando llegan logs nuevos.
+  // Respeta al usuario: si scrolleo hacia arriba a leer, no lo interrumpimos.
+  const logsRef = useRef<HTMLDivElement | null>(null)
+  const stickToBottomRef = useRef(true)
+  useLayoutEffect(() => {
+    const el = logsRef.current
+    if (!el) return
+    if (stickToBottomRef.current) {
+      el.scrollTop = el.scrollHeight
+    }
+  }, [lines.length, expandedId])
+  const onLogsScroll = () => {
+    const el = logsRef.current
+    if (!el) return
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    stickToBottomRef.current = distanceFromBottom < 40
+  }
 
   // Live tail via SSE (opcional, escribe también a la DB desde el back)
   useEffect(() => {
@@ -444,8 +536,12 @@ function LogsViewer() {
         </div>
       )}
 
-      {/* Tabla histórica */}
-      <div className="mt-3 rounded-md bg-bg-inset border border-border-subtle px-3 py-2 font-mono text-[12px] max-h-[600px] overflow-auto">
+      {/* Tabla histórica · orden asc (viejos arriba, nuevos abajo). Auto-scroll al fondo. */}
+      <div
+        ref={logsRef}
+        onScroll={onLogsScroll}
+        className="mt-3 rounded-md bg-bg-inset border border-border-subtle px-3 py-2 font-mono text-[12px] max-h-[600px] overflow-auto"
+      >
         {dbQ.isLoading && (
           <div className="text-fg-muted text-center py-4 animate-pulse">cargando…</div>
         )}
@@ -557,6 +653,69 @@ function ContextPanel({
               {c.msg}
             </span>
           </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function UptimeStat({
+  label,
+  value,
+  note,
+  loading,
+  accent,
+}: {
+  label: string
+  value?: string
+  note?: string
+  loading?: boolean
+  accent?: string
+}) {
+  return (
+    <div className="rounded-md bg-bg-card border border-border-subtle px-4 py-3">
+      <div className="text-fg-faint text-[10.5px] uppercase tracking-wide">{label}</div>
+      <div className={cn('tabular-nums text-[20px] mt-1', accent ?? 'text-fg-primary')}>
+        {loading ? '…' : (value ?? '—')}
+      </div>
+      {note && <div className="text-fg-muted text-[11px] mt-0.5">{note}</div>}
+    </div>
+  )
+}
+
+function BackSparkline({
+  points,
+  loading,
+}: {
+  points: { ts: string; ok: boolean; responseMs: number }[]
+  loading?: boolean
+}) {
+  if (loading) return <div className="h-16 rounded bg-bg-inset animate-pulse" />
+  if (points.length === 0) {
+    return (
+      <div className="h-16 rounded bg-bg-inset border border-border-subtle flex items-center justify-center text-fg-muted text-[11.5px]">
+        aún no hay pings (espera 1-2 min tras arrancar el back del monitor)
+      </div>
+    )
+  }
+  const okMs = points.filter((p) => p.ok).map((p) => p.responseMs)
+  const maxMs = Math.max(200, ...okMs)
+  return (
+    <div className="h-16 rounded bg-bg-inset border border-border-subtle flex items-end gap-[1px] px-1 py-1">
+      {points.map((p, i) => {
+        const h = p.ok ? Math.max(4, Math.round((p.responseMs / maxMs) * 100)) : 100
+        const color = p.ok
+          ? p.responseMs > 1500
+            ? 'bg-state-warn'
+            : 'bg-state-ok'
+          : 'bg-state-crit'
+        return (
+          <div
+            key={i}
+            className={cn('flex-1 min-w-[2px] rounded-sm', color)}
+            style={{ height: `${h}%` }}
+            title={`${p.ts} · ${p.responseMs}ms${p.ok ? '' : ' · FALLO'}`}
+          />
         )
       })}
     </div>

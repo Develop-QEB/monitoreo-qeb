@@ -1,6 +1,12 @@
 import { Section } from '@/components/ui/Section'
 import { StatusBadge, type StatusKind } from '@/components/ui/StatusBadge'
-import { useVercelDeployments, type VercelDeployment } from '@/lib/infraQueries'
+import { LiveBadge } from '@/components/ui/LiveBadge'
+import {
+  useVercelDeployments,
+  useUptimeSummary,
+  useUptimeSeries,
+  type VercelDeployment,
+} from '@/lib/infraQueries'
 import { cn } from '@/lib/utils'
 
 // Mapea el state de Vercel a nuestros colores
@@ -33,8 +39,11 @@ function duration(d: VercelDeployment): string {
 
 export default function Frontend() {
   const depQ = useVercelDeployments()
+  const upQ = useUptimeSummary(24)
+  const seriesQ = useUptimeSeries('front-qeb', 24)
   const configured = depQ.data?.configured
   const deployments = depQ.data?.deployments ?? []
+  const frontUptime = upQ.data?.targets.find((t) => t.key === 'front-qeb')
 
   return (
     <div className="flex flex-col gap-6 text-[13px]">
@@ -45,11 +54,17 @@ export default function Frontend() {
           <span className="text-fg-faint">·</span>
           <span className="text-fg-muted text-[11.5px]">vercel · main</span>
         </div>
-        {configured ? (
-          <StatusBadge status="ok" label="vercel conectado" />
-        ) : (
-          <StatusBadge status="muted" label="sin token vercel" />
-        )}
+        <div className="flex items-center gap-3">
+          <LiveBadge
+            intervalSec={30}
+            fetching={depQ.isFetching || upQ.isFetching || seriesQ.isFetching}
+          />
+          {configured ? (
+            <StatusBadge status="ok" label="vercel conectado" />
+          ) : (
+            <StatusBadge status="muted" label="sin token vercel" />
+          )}
+        </div>
       </div>
 
       {!depQ.isLoading && configured === false && (
@@ -132,15 +147,137 @@ export default function Frontend() {
         </div>
       </Section>
 
-      {/* Uptime & response — todavía requieren un servicio de monitoreo aparte */}
+      {/* Uptime & response — pings propios cada 60s desde el back del monitor */}
       <Section
         title="uptime & tiempo de respuesta"
-        subtitle="requiere servicio de pings (uptimerobot, better-stack, cronjob propio…)"
+        subtitle="pings cada 60s desde el back del monitor · últimas 24h"
       >
-        <div className="mt-2 rounded-md bg-bg-inset border border-brand-500/30 px-3 py-2 text-[12px] text-brand-300 font-mono">
-          [pendiente] Vercel no expone uptime por API. Opciones: correr pings desde el mismo back del monitor cada 60s y guardar en dashboard_dev, o integrar con UptimeRobot / Better Stack.
+        <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-3">
+          <StatTile
+            label="uptime 24h"
+            value={frontUptime ? `${frontUptime.uptimePct.toFixed(2)}%` : undefined}
+            note={frontUptime ? `${frontUptime.okCount}/${frontUptime.count} pings ok` : ''}
+            loading={upQ.isLoading}
+            accent={
+              !frontUptime
+                ? 'text-fg-primary'
+                : frontUptime.uptimePct >= 99.5
+                  ? 'text-state-ok'
+                  : frontUptime.uptimePct >= 95
+                    ? 'text-state-warn'
+                    : 'text-state-crit'
+            }
+          />
+          <StatTile
+            label="respuesta prom."
+            value={frontUptime?.avgMs != null ? `${frontUptime.avgMs} ms` : undefined}
+            note="get contra el front prod"
+            loading={upQ.isLoading}
+          />
+          <StatTile
+            label="p95"
+            value={frontUptime?.p95Ms != null ? `${frontUptime.p95Ms} ms` : undefined}
+            note="95% de pings bajo este ms"
+            loading={upQ.isLoading}
+          />
+          <StatTile
+            label="último ping"
+            value={
+              frontUptime?.lastPingAt
+                ? relative(new Date(frontUptime.lastPingAt).getTime())
+                : undefined
+            }
+            note={
+              frontUptime?.lastOk === false
+                ? 'último falló'
+                : frontUptime?.lastStatus != null
+                  ? `HTTP ${frontUptime.lastStatus}`
+                  : ''
+            }
+            loading={upQ.isLoading}
+            accent={frontUptime?.lastOk === false ? 'text-state-crit' : undefined}
+          />
+        </div>
+
+        <div className="mt-4">
+          <UptimeSparkline
+            points={seriesQ.data?.points ?? []}
+            loading={seriesQ.isLoading}
+          />
+          <div className="mt-1 flex items-center justify-between text-[10.5px] text-fg-faint tabular-nums">
+            <span>hace 24h</span>
+            <span>{seriesQ.data?.points.length ?? 0} pings</span>
+            <span>ahora</span>
+          </div>
         </div>
       </Section>
+    </div>
+  )
+}
+
+function StatTile({
+  label,
+  value,
+  note,
+  loading,
+  accent,
+}: {
+  label: string
+  value?: string
+  note?: string
+  loading?: boolean
+  accent?: string
+}) {
+  return (
+    <div className="rounded-md bg-bg-card border border-border-subtle px-4 py-3">
+      <div className="text-fg-faint text-[10.5px] uppercase tracking-wide">{label}</div>
+      <div className={cn('tabular-nums text-[20px] mt-1', accent ?? 'text-fg-primary')}>
+        {loading ? '…' : (value ?? '—')}
+      </div>
+      {note && <div className="text-fg-muted text-[11px] mt-0.5">{note}</div>}
+    </div>
+  )
+}
+
+// Sparkline barras: ancho de cada barra proporcional al tiempo, alto proporcional
+// al responseMs. Barra roja si el ping fallo. Visualmente denso pero simple.
+function UptimeSparkline({
+  points,
+  loading,
+}: {
+  points: { ts: string; ok: boolean; responseMs: number }[]
+  loading?: boolean
+}) {
+  if (loading) {
+    return <div className="h-16 rounded bg-bg-inset animate-pulse" />
+  }
+  if (points.length === 0) {
+    return (
+      <div className="h-16 rounded bg-bg-inset border border-border-subtle flex items-center justify-center text-fg-muted text-[11.5px]">
+        aún no hay pings (espera 1-2 min tras arrancar el back)
+      </div>
+    )
+  }
+  const okMs = points.filter((p) => p.ok).map((p) => p.responseMs)
+  const maxMs = Math.max(200, ...okMs)
+  return (
+    <div className="h-16 rounded bg-bg-inset border border-border-subtle flex items-end gap-[1px] px-1 py-1">
+      {points.map((p, i) => {
+        const h = p.ok ? Math.max(4, Math.round((p.responseMs / maxMs) * 100)) : 100
+        const color = p.ok
+          ? p.responseMs > 1500
+            ? 'bg-state-warn'
+            : 'bg-state-ok'
+          : 'bg-state-crit'
+        return (
+          <div
+            key={i}
+            className={cn('flex-1 min-w-[2px] rounded-sm', color)}
+            style={{ height: `${h}%` }}
+            title={`${p.ts} · ${p.responseMs}ms${p.ok ? '' : ' · FALLO'}`}
+          />
+        )
+      })}
     </div>
   )
 }

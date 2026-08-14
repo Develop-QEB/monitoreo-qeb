@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Section } from '@/components/ui/Section'
 import { StatusBadge, type StatusKind } from '@/components/ui/StatusBadge'
+import { LiveBadge } from '@/components/ui/LiveBadge'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
@@ -34,7 +35,8 @@ export default function Reservas() {
   const statsQ = useQuery({
     queryKey: ['qeb', 'reservas', 'stats'],
     queryFn: () => api.get<{ stats: Stats }>('/qeb/reservas/stats').then((r) => r.stats),
-    staleTime: 60_000,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
   })
 
   const distQ = useQuery({
@@ -44,6 +46,7 @@ export default function Reservas() {
         .get<{ distribucion: Distribucion[] }>('/qeb/reservas/by-estatus')
         .then((r) => r.distribucion),
     staleTime: 60_000,
+    refetchInterval: 60_000,
   })
 
   const stats = statsQ.data
@@ -63,13 +66,19 @@ export default function Reservas() {
       <div className="flex items-center justify-between border-b border-border-subtle pb-4">
         <div className="flex items-center gap-3">
           <span className="text-fg-muted text-[11.5px]">negocio</span>
-          <span className="text-fg-primary text-[15px]">reservas.qeb</span>
+          <span className="text-fg-primary text-[15px]">reservas qeb</span>
           <span className="text-fg-faint">·</span>
           <span className="text-fg-muted text-[11.5px]">
-            datos en vivo · agregados sobre 490k+ filas
+            datos en vivo · agregados sobre {stats?.total != null ? n(stats.total) : '…'} filas
           </span>
         </div>
-        <StatusBadge status={bannerStatus} label={bannerLabel} />
+        <div className="flex items-center gap-3">
+          <LiveBadge
+            intervalSec={30}
+            fetching={statsQ.isFetching || distQ.isFetching}
+          />
+          <StatusBadge status={bannerStatus} label={bannerLabel} />
+        </div>
       </div>
 
       {(statsQ.isError || distQ.isError) && (
@@ -100,7 +109,7 @@ export default function Reservas() {
       {/* Salud de datos (calidad) */}
       <Section
         title="calidad de datos"
-        subtitle="sobre las activas (deleted_at IS NULL)"
+        subtitle="solo activas"
       >
         <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-3">
           <div className="rounded-md bg-bg-card border border-border-subtle px-4 py-3">

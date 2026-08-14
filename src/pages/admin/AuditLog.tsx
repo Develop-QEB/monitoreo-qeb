@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Section } from '@/components/ui/Section'
 import { StatusBadge } from '@/components/ui/StatusBadge'
+import { LiveBadge } from '@/components/ui/LiveBadge'
 import { useAuditQuery } from '@/lib/queries'
 import type { AuditAction } from '@/types/api'
 import { cn } from '@/lib/utils'
@@ -78,24 +79,27 @@ export default function AuditLog() {
       <div className="flex items-center justify-between border-b border-border-subtle pb-4">
         <div className="flex items-center gap-3">
           <span className="text-fg-muted text-[11.5px]">admin</span>
-          <span className="text-fg-primary text-[15px]">bitacora.admin</span>
+          <span className="text-fg-primary text-[15px]">bitacora admin</span>
           <span className="text-fg-faint">·</span>
           <span className="text-fg-muted text-[11.5px]">
             {auditQ.isLoading ? 'cargando…' : `${counts.total} eventos · últimos 500`}
           </span>
         </div>
-        <StatusBadge
-          status={
-            auditQ.isError ? 'crit' : counts.loginFails > 0 ? 'warn' : 'ok'
-          }
-          label={
-            auditQ.isError
-              ? 'error api'
-              : counts.loginFails > 0
-                ? `${counts.loginFails} logins fallidos`
-                : 'sin alertas'
-          }
-        />
+        <div className="flex items-center gap-3">
+          <LiveBadge intervalSec={30} fetching={auditQ.isFetching} />
+          <StatusBadge
+            status={
+              auditQ.isError ? 'crit' : counts.loginFails > 0 ? 'warn' : 'ok'
+            }
+            label={
+              auditQ.isError
+                ? 'error api'
+                : counts.loginFails > 0
+                  ? `${counts.loginFails} logins fallidos`
+                  : 'sin alertas'
+            }
+          />
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">

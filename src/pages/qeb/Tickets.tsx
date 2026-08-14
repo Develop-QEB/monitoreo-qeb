@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Section } from '@/components/ui/Section'
 import { StatusBadge, type StatusKind } from '@/components/ui/StatusBadge'
-import { UnicodeSparkline } from '@/components/ui/UnicodeSparkline'
+import { LiveBadge } from '@/components/ui/LiveBadge'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
@@ -108,7 +108,8 @@ export default function Tickets() {
   const statsQ = useQuery({
     queryKey: ['qeb', 'tickets', 'stats'],
     queryFn: () => api.get<{ stats: Stats }>('/qeb/tickets/stats').then((r) => r.stats),
-    staleTime: 60_000,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
   })
 
   const distQ = useQuery({
@@ -116,6 +117,7 @@ export default function Tickets() {
     queryFn: () =>
       api.get<{ distribucion: Distribucion[] }>('/qeb/tickets/by-categoria').then((r) => r.distribucion),
     staleTime: 60_000,
+    refetchInterval: 60_000,
   })
 
   const listQ = useQuery({
@@ -127,6 +129,7 @@ export default function Tickets() {
       return api.get<{ tickets: Ticket[] }>(`/qeb/tickets?${qs}`).then((r) => r.tickets)
     },
     staleTime: 30_000,
+    refetchInterval: 30_000,
   })
 
   const stats = statsQ.data
@@ -145,13 +148,19 @@ export default function Tickets() {
       <div className="flex items-center justify-between border-b border-border-subtle pb-4">
         <div className="flex items-center gap-3">
           <span className="text-fg-muted text-[11.5px]">negocio</span>
-          <span className="text-fg-primary text-[15px]">tickets.qeb</span>
+          <span className="text-fg-primary text-[15px]">tickets qeb</span>
           <span className="text-fg-faint">·</span>
           <span className="text-fg-muted text-[11.5px]">
             reportes y solicitudes de los usuarios de qeb · datos en vivo
           </span>
         </div>
-        <StatusBadge status={bannerStatus} label={bannerLabel} />
+        <div className="flex items-center gap-3">
+          <LiveBadge
+            intervalSec={30}
+            fetching={statsQ.isFetching || distQ.isFetching || listQ.isFetching}
+          />
+          <StatusBadge status={bannerStatus} label={bannerLabel} />
+        </div>
       </div>
 
       {(statsQ.isError || listQ.isError) && (
@@ -335,9 +344,6 @@ export default function Tickets() {
         </div>
       </Section>
 
-      {/* Sparkline decoration for consistency */}
-      <UnicodeSparkline data={[]} className="hidden" />
-
       {openId && <TicketModal id={openId} onClose={() => setOpenId(null)} />}
     </div>
   )
@@ -491,7 +497,7 @@ function TicketModal({ id, onClose }: { id: number; onClose: () => void }) {
                               rel="noreferrer"
                               className="text-brand-400 hover:underline text-[11px] mt-1 inline-block"
                             >
-                              📎 {m.archivo_nombre ?? 'archivo'} ↗
+                              [adjunto] {m.archivo_nombre ?? 'archivo'} ↗
                             </a>
                           )}
                         </div>

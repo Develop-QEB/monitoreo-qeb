@@ -46,6 +46,7 @@ export function useVercelDeployments() {
     queryKey: ['infra', 'vercel', 'deployments'],
     queryFn: () => api.get<DeploymentsResp>('/infra/vercel/deployments'),
     staleTime: 30_000,
+    refetchInterval: 30_000,
   })
 }
 
@@ -58,6 +59,12 @@ export interface DoAppDeployment {
   progress?: { success_steps: number; error_steps: number; total_steps: number }
   created_at: string
   updated_at: string
+}
+
+export interface PlanInfo {
+  slug: string
+  usdPerMonth: number | null
+  known: boolean
 }
 
 interface DoAppInfoResp {
@@ -73,6 +80,7 @@ interface DoAppInfoResp {
     active_deployment?: DoAppDeployment
     in_progress_deployment?: DoAppDeployment
   }
+  plan?: PlanInfo
 }
 
 interface DoAppDeploysResp {
@@ -86,7 +94,8 @@ export function useDoAppInfo() {
   return useQuery({
     queryKey: ['infra', 'do', 'app'],
     queryFn: () => api.get<DoAppInfoResp>('/infra/do/app'),
-    staleTime: 60_000,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
   })
 }
 
@@ -95,6 +104,7 @@ export function useDoAppDeployments() {
     queryKey: ['infra', 'do', 'app', 'deployments'],
     queryFn: () => api.get<DoAppDeploysResp>('/infra/do/app/deployments'),
     staleTime: 30_000,
+    refetchInterval: 30_000,
   })
 }
 
@@ -120,7 +130,7 @@ export function useDoAppMetrics(metric: 'cpu_percentage' | 'memory_percentage' |
     queryKey: ['infra', 'do', 'app', 'metrics', metric],
     queryFn: () => api.get<AppMetricsResp>(`/infra/do/app/metrics?metric=${metric}&hours=1`),
     staleTime: 30_000,
-    refetchInterval: 60_000,
+    refetchInterval: 30_000,
   })
 }
 
@@ -178,6 +188,7 @@ export function useDbLogs(filters: DbLogsFilters) {
         `/infra/do/app/logs/db${qs.toString() ? '?' + qs.toString() : ''}`,
       ),
     staleTime: 15_000,
+    refetchInterval: 15_000,
   })
 }
 
@@ -192,7 +203,8 @@ export function useDbLogsStats() {
   return useQuery({
     queryKey: ['infra', 'do', 'app', 'logs', 'db', 'stats'],
     queryFn: () => api.get<DbLogsStats>('/infra/do/app/logs/db/stats'),
-    staleTime: 60_000,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
   })
 }
 
@@ -244,6 +256,7 @@ export function useSpacesSummary() {
     queryKey: ['infra', 'spaces', 'summary'],
     queryFn: () => api.get<SpacesSummary>('/infra/spaces/summary'),
     staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
   })
 }
 
@@ -267,8 +280,8 @@ export function useRecentErrors(minutes = 15) {
         `/infra/do/app/logs/db?${qs.toString()}`,
       )
     },
-    staleTime: 30_000,
-    refetchInterval: 60_000,
+    staleTime: 15_000,
+    refetchInterval: 15_000,
   })
 }
 
@@ -303,6 +316,7 @@ interface DoDbResp {
     connection?: { host: string; port: number; database: string; ssl: boolean }
     created_at: string
   }
+  plan?: PlanInfo
 }
 
 export function useDoDbCluster() {
@@ -310,5 +324,74 @@ export function useDoDbCluster() {
     queryKey: ['infra', 'do', 'database'],
     queryFn: () => api.get<DoDbResp>('/infra/do/database'),
     staleTime: 60_000,
+    refetchInterval: 60_000,
+  })
+}
+
+// ------- Uptime (pings propios) -------
+
+export type UptimeTargetKey = 'front-qeb' | 'back-qeb' | 'db-qeb'
+
+export interface UptimeTargetSummary {
+  key: UptimeTargetKey
+  name: string
+  count: number
+  okCount: number
+  uptimePct: number
+  avgMs: number | null
+  p95Ms: number | null
+  lastPingAt: string | null
+  lastOk: boolean | null
+  lastStatus: number | null
+}
+
+export interface UptimeSummaryResp {
+  hours: number
+  targets: UptimeTargetSummary[]
+}
+
+export function useUptimeSummary(hours = 24) {
+  return useQuery({
+    queryKey: ['infra', 'uptime', 'summary', hours],
+    queryFn: () => api.get<UptimeSummaryResp>(`/infra/uptime/summary?hours=${hours}`),
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+  })
+}
+
+export interface UptimePoint {
+  ts: string
+  ok: boolean
+  responseMs: number
+  status: number | null
+}
+
+export function useUptimeSeries(target: UptimeTargetKey, hours = 24) {
+  return useQuery({
+    queryKey: ['infra', 'uptime', 'series', target, hours],
+    queryFn: () =>
+      api.get<{ target: string; hours: number; points: UptimePoint[] }>(
+        `/infra/uptime/series?target=${target}&hours=${hours}`,
+      ),
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+  })
+}
+
+// ------- VPS status -------
+
+export interface VpsStatus {
+  configured: boolean
+  connected: boolean
+  lastLineAt: string | null
+  buffered: number
+}
+
+export function useVpsStatus() {
+  return useQuery({
+    queryKey: ['vps', 'status'],
+    queryFn: () => api.get<VpsStatus>('/vps/logs/status'),
+    staleTime: 10_000,
+    refetchInterval: 15_000,
   })
 }

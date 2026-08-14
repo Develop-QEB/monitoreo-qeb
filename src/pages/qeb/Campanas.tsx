@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Section } from '@/components/ui/Section'
 import { StatusBadge, type StatusKind } from '@/components/ui/StatusBadge'
+import { LiveBadge } from '@/components/ui/LiveBadge'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
@@ -68,7 +69,8 @@ export default function Campanas() {
   const statsQ = useQuery({
     queryKey: ['qeb', 'campania', 'stats'],
     queryFn: () => api.get<{ stats: Stats }>('/qeb/campania/stats').then((r) => r.stats),
-    staleTime: 60_000,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
   })
 
   const listQ = useQuery({
@@ -78,6 +80,7 @@ export default function Campanas() {
         .get<{ campanias: Campania[] }>(`/qeb/campania?scope=${scope}&limit=50`)
         .then((r) => r.campanias),
     staleTime: 30_000,
+    refetchInterval: 30_000,
   })
 
   const stats = statsQ.data
@@ -104,13 +107,19 @@ export default function Campanas() {
       <div className="flex items-center justify-between border-b border-border-subtle pb-4">
         <div className="flex items-center gap-3">
           <span className="text-fg-muted text-[11.5px]">negocio</span>
-          <span className="text-fg-primary text-[15px]">campania.qeb</span>
+          <span className="text-fg-primary text-[15px]">campanas qeb</span>
           <span className="text-fg-faint">·</span>
           <span className="text-fg-muted text-[11.5px]">
-            datos en vivo desde u658050396_QEB
+            datos en vivo desde la BD de QEB
           </span>
         </div>
-        <StatusBadge status={statusFilter} label={bannerLabel} />
+        <div className="flex items-center gap-3">
+          <LiveBadge
+            intervalSec={30}
+            fetching={statsQ.isFetching || listQ.isFetching}
+          />
+          <StatusBadge status={statusFilter} label={bannerLabel} />
+        </div>
       </div>
 
       {(statsQ.isError || listQ.isError) && (
@@ -141,7 +150,7 @@ export default function Campanas() {
       {/* Lista */}
       <Section
         title={scope === 'vigentes' ? 'campañas vigentes' : 'últimas 50 creadas'}
-        subtitle="join con cliente para asesor + cliente comercial"
+        subtitle="incluye asesor y cliente comercial"
         right={
           <div className="flex items-center gap-1 text-[11px]">
             <span className="text-fg-faint">mostrar:</span>

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Section } from '@/components/ui/Section'
 import { StatusBadge } from '@/components/ui/StatusBadge'
+import { LiveBadge } from '@/components/ui/LiveBadge'
 import { api } from '@/lib/api'
 import { useAuth } from '@/stores/authStore'
 import { cn } from '@/lib/utils'
@@ -106,18 +107,77 @@ export default function Vps() {
       <div className="flex items-center justify-between border-b border-border-subtle pb-4">
         <div className="flex items-center gap-3">
           <span className="text-fg-muted text-[11.5px]">servicio</span>
-          <span className="text-fg-primary text-[15px]">vps.qeb</span>
+          <span className="text-fg-primary text-[15px]">vps qeb</span>
           <span className="text-fg-faint">·</span>
           <span className="text-fg-muted text-[11.5px]">windows · powershell agent</span>
         </div>
-        {configured === false ? (
-          <StatusBadge status="muted" label="sin secreto vps" />
-        ) : connected ? (
-          <StatusBadge status="ok" label="agente conectado" />
-        ) : (
-          <StatusBadge status="warn" label="esperando agente" />
-        )}
+        <div className="flex items-center gap-3">
+          <LiveBadge intervalSec={5} fetching={statusQ.isFetching} />
+          {configured === false ? (
+            <StatusBadge status="muted" label="sin secreto vps" />
+          ) : connected ? (
+            <StatusBadge status="ok" label="agente conectado" />
+          ) : (
+            <StatusBadge status="warn" label="esperando agente" />
+          )}
+        </div>
       </div>
+
+      {/* Estado del agente · info agregada del back */}
+      {configured !== false && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="rounded-md bg-bg-card border border-border-subtle px-4 py-3">
+            <div className="text-fg-faint text-[10.5px] uppercase tracking-wide">agente</div>
+            <div
+              className={cn(
+                'tabular-nums text-[16px] mt-1 flex items-center gap-2',
+                connected ? 'text-state-ok' : 'text-state-warn',
+              )}
+            >
+              <span
+                className={cn(
+                  'h-1.5 w-1.5 rounded-full',
+                  connected ? 'bg-state-ok animate-pulse' : 'bg-state-warn',
+                )}
+              />
+              {connected ? 'conectado' : 'sin agente'}
+            </div>
+            <div className="text-fg-muted text-[10.5px] mt-0.5">
+              connected = logs en el último minuto
+            </div>
+          </div>
+          <div className="rounded-md bg-bg-card border border-border-subtle px-4 py-3">
+            <div className="text-fg-faint text-[10.5px] uppercase tracking-wide">última línea</div>
+            <div className="text-fg-primary tabular-nums text-[16px] mt-1">
+              {status?.lastLineAt ? relative(status.lastLineAt) : '—'}
+            </div>
+            <div className="text-fg-muted text-[10.5px] mt-0.5">
+              {status?.lastLineAt ? fmtTs(status.lastLineAt) : 'aún no empuja logs'}
+            </div>
+          </div>
+          <div className="rounded-md bg-bg-card border border-border-subtle px-4 py-3">
+            <div className="text-fg-faint text-[10.5px] uppercase tracking-wide">
+              buffer del back
+            </div>
+            <div className="text-fg-primary tabular-nums text-[16px] mt-1">
+              {status?.buffered ?? '—'}
+            </div>
+            <div className="text-fg-muted text-[10.5px] mt-0.5">
+              líneas recientes en RAM (para nuevos SSE)
+            </div>
+          </div>
+          <div className="rounded-md bg-bg-card border border-border-subtle px-4 py-3">
+            <div className="text-fg-faint text-[10.5px] uppercase tracking-wide">
+              buffer local
+            </div>
+            <div className="text-fg-primary tabular-nums text-[16px] mt-1">
+              {lines.length}
+              <span className="text-fg-muted text-[10.5px] ml-1">/ {MAX_LINES}</span>
+            </div>
+            <div className="text-fg-muted text-[10.5px] mt-0.5">líneas en esta pestaña</div>
+          </div>
+        </div>
+      )}
 
       {statusQ.data && configured === false && (
         <div className="rounded-md bg-bg-inset border border-brand-500/30 px-3 py-2 text-[12px] text-brand-300 font-mono">

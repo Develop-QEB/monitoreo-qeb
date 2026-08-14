@@ -1,5 +1,6 @@
 import { Section } from '@/components/ui/Section'
 import { StatusBadge } from '@/components/ui/StatusBadge'
+import { LiveBadge } from '@/components/ui/LiveBadge'
 import { useSpacesSummary } from '@/lib/infraQueries'
 import { cn } from '@/lib/utils'
 
@@ -43,30 +44,18 @@ export default function Spaces() {
       <div className="flex items-center justify-between border-b border-border-subtle pb-4">
         <div className="flex items-center gap-3">
           <span className="text-fg-muted text-[11.5px]">servicio</span>
-          <span className="text-fg-primary text-[15px]">spaces.qeb</span>
+          <span className="text-fg-primary text-[15px]">spaces qeb</span>
           <span className="text-fg-faint">·</span>
-          <span className="text-fg-muted text-[11.5px]">
-            {data?.bucket ?? 'qeb-media-main'} · digitalocean spaces
-          </span>
-          {data?.endpoint && (
-            <>
-              <span className="text-fg-faint">·</span>
-              <a
-                href={data.endpoint}
-                target="_blank"
-                rel="noreferrer"
-                className="text-brand-400 hover:underline text-[11.5px]"
-              >
-                bucket ↗
-              </a>
-            </>
+          <span className="text-fg-muted text-[11.5px]">digitalocean spaces</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <LiveBadge intervalSec={300} fetching={q.isFetching} />
+          {configured ? (
+            <StatusBadge status="ok" label="spaces conectado (readonly)" />
+          ) : (
+            <StatusBadge status="muted" label="sin keys spaces" />
           )}
         </div>
-        {configured ? (
-          <StatusBadge status="ok" label="spaces conectado (readonly)" />
-        ) : (
-          <StatusBadge status="muted" label="sin keys spaces" />
-        )}
       </div>
 
       {!q.isLoading && configured === false && (

@@ -12,7 +12,8 @@ export function useUsersQuery() {
       const res = await api.get<{ users: AdminUser[] }>('/users')
       return res.users
     },
-    staleTime: 15_000,
+    staleTime: 60_000,
+    refetchInterval: 60_000,
   })
 }
 
@@ -118,6 +119,7 @@ export function useAuditQuery(params?: { action?: string; actor?: string; limit?
       const res = await api.get<{ events: AuditEvent[] }>(url)
       return res.events
     },
-    staleTime: 10_000,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
   })
 }

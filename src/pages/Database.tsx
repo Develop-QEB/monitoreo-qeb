@@ -1,7 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
 import { Section } from '@/components/ui/Section'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { useDoDbCluster } from '@/lib/infraQueries'
+import { LiveBadge } from '@/components/ui/LiveBadge'
+import {
+  useDoDbCluster,
+  useUptimeSummary,
+  useUptimeSeries,
+} from '@/lib/infraQueries'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
@@ -20,6 +25,19 @@ function humanUptime(sec: number) {
   const h = Math.floor((sec % (24 * 3600)) / 3600)
   const m = Math.floor((sec % 3600) / 60)
   return `${d}d ${h}h ${m}m`
+}
+
+function relative(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const t = new Date(iso).getTime()
+  if (!Number.isFinite(t)) return '—'
+  const s = Math.max(0, Math.round((Date.now() - t) / 1000))
+  if (s < 60) return `hace ${s}s`
+  const m = Math.round(s / 60)
+  if (m < 60) return `hace ${m}m`
+  const h = Math.round(m / 60)
+  if (h < 48) return `hace ${h}h`
+  return `hace ${Math.round(h / 24)}d`
 }
 
 interface DbStatus {
@@ -59,6 +77,8 @@ interface IndicesResp {
 
 export default function Database() {
   const dbQ = useDoDbCluster()
+  const upQ = useUptimeSummary(24)
+  const seriesQ = useUptimeSeries('db-qeb', 24)
   const statusQ = useQuery({
     queryKey: ['qeb', 'db', 'status'],
     queryFn: () => api.get<DbStatus>('/qeb/db/status'),
@@ -69,35 +89,50 @@ export default function Database() {
     queryKey: ['qeb', 'db', 'tables'],
     queryFn: () => api.get<{ tables: TableRow[] }>('/qeb/db/tables').then((r) => r.tables),
     staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
   })
   const indicesQ = useQuery({
     queryKey: ['qeb', 'indices'],
     queryFn: () => api.get<IndicesResp>('/qeb/indices'),
     staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
   })
 
   const configured = dbQ.data?.configured
   const cluster = dbQ.data?.cluster
+  const plan = dbQ.data?.plan
   const status = statusQ.data
   const tables = tablesQ.data ?? []
   const maxTableSize = Math.max(...tables.map((t) => t.total_mb), 1)
+  const dbUptime = upQ.data?.targets.find((t) => t.key === 'db-qeb')
 
   return (
     <div className="flex flex-col gap-6 text-[13px]">
       <div className="flex items-center justify-between border-b border-border-subtle pb-4">
         <div className="flex items-center gap-3">
           <span className="text-fg-muted text-[11.5px]">servicio</span>
-          <span className="text-fg-primary text-[15px]">database.qeb</span>
+          <span className="text-fg-primary text-[15px]">database qeb</span>
           <span className="text-fg-faint">·</span>
           <span className="text-fg-muted text-[11.5px]">
-            {cluster?.name ?? 'qeb-mysql-prod'} · {cluster?.engine ?? 'mysql'}{' '}
-            {cluster?.version ?? ''}
+            {cluster?.engine ?? 'mysql'} {cluster?.version ?? ''}
           </span>
         </div>
-        <StatusBadge
-          status={cluster?.status === 'online' ? 'ok' : configured ? 'warn' : 'muted'}
-          label={cluster?.status ?? (configured ? 'sin datos' : 'sin token do')}
-        />
+        <div className="flex items-center gap-3">
+          <LiveBadge
+            intervalSec={60}
+            fetching={
+              dbQ.isFetching ||
+              upQ.isFetching ||
+              statusQ.isFetching ||
+              tablesQ.isFetching ||
+              indicesQ.isFetching
+            }
+          />
+          <StatusBadge
+            status={cluster?.status === 'online' ? 'ok' : configured ? 'warn' : 'muted'}
+            label={cluster?.status ?? (configured ? 'sin datos' : 'sin token do')}
+          />
+        </div>
       </div>
 
       {dbQ.isError && (
@@ -110,23 +145,75 @@ export default function Database() {
       {configured === true && cluster && (
         <Section title="cluster" subtitle="digitalocean managed database · info en vivo">
           <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-3">
-            <InfoTile label="nombre" value={cluster.name} />
             <InfoTile label="engine" value={`${cluster.engine} ${cluster.version}`} />
             <InfoTile label="status" value={cluster.status} />
-            <InfoTile label="tamaño" value={cluster.size} />
             <InfoTile label="región" value={cluster.region} />
-            <InfoTile label="nodos" value={String(cluster.num_nodes)} />
-            {cluster.db_names && cluster.db_names.length > 0 && (
-              <InfoTile
-                label="databases"
-                value={cluster.db_names.slice(0, 4).join(', ')}
-                className="md:col-span-2"
-              />
+            {plan && (
+              <div className="rounded-md bg-bg-card border border-border-subtle px-4 py-3">
+                <div className="text-fg-faint text-[10.5px] uppercase tracking-wide">plan</div>
+                <div className="text-fg-primary mt-1 text-[14px]">{plan.slug}</div>
+                <div className="text-fg-muted text-[11.5px] mt-0.5">
+                  {plan.usdPerMonth != null
+                    ? `~$${plan.usdPerMonth} USD/mes`
+                    : 'precio: consultar'}
+                </div>
+              </div>
             )}
+            <InfoTile
+              label="nodos"
+              value={`${cluster.num_nodes} nodo${cluster.num_nodes === 1 ? '' : 's'}`}
+            />
             <InfoTile label="creado" value={formatIso(cluster.created_at)} />
           </div>
         </Section>
       )}
+
+      {/* Uptime & response — pings TCP al puerto de MySQL cada 60s */}
+      <Section
+        title="uptime & tiempo de respuesta"
+        subtitle="ping TCP al puerto de mysql cada 60s desde el monitor · últimas 24h"
+      >
+        <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-3">
+          <MetricTile
+            label="uptime 24h"
+            value={dbUptime ? `${dbUptime.uptimePct.toFixed(2)}%` : '—'}
+            note={dbUptime ? `${dbUptime.okCount}/${dbUptime.count} pings ok` : ''}
+            accent={
+              !dbUptime
+                ? undefined
+                : dbUptime.uptimePct >= 99.5
+                  ? 'text-state-ok'
+                  : dbUptime.uptimePct >= 95
+                    ? 'text-state-warn'
+                    : 'text-state-crit'
+            }
+          />
+          <MetricTile
+            label="latencia prom."
+            value={dbUptime?.avgMs != null ? `${dbUptime.avgMs} ms` : '—'}
+            note="tcp handshake"
+          />
+          <MetricTile
+            label="p95"
+            value={dbUptime?.p95Ms != null ? `${dbUptime.p95Ms} ms` : '—'}
+            note="95% de pings bajo este ms"
+          />
+          <MetricTile
+            label="último ping"
+            value={dbUptime?.lastPingAt ? relative(dbUptime.lastPingAt) : '—'}
+            note={dbUptime?.lastOk === false ? 'último falló' : ''}
+            accent={dbUptime?.lastOk === false ? 'text-state-crit' : undefined}
+          />
+        </div>
+        <div className="mt-4">
+          <DbSparkline points={seriesQ.data?.points ?? []} loading={seriesQ.isLoading} />
+          <div className="mt-1 flex items-center justify-between text-[10.5px] text-fg-faint tabular-nums">
+            <span>hace 24h</span>
+            <span>{seriesQ.data?.points.length ?? 0} pings</span>
+            <span>ahora</span>
+          </div>
+        </div>
+      </Section>
 
       {/* MySQL live stats (via monitor_readonly) */}
       <Section
@@ -264,7 +351,7 @@ export default function Database() {
       {/* Índices críticos */}
       <Section
         title="índices críticos"
-        subtitle="verificación estática · SHOW INDEX contra u658050396_QEB"
+        subtitle="verificación estática · SHOW INDEX contra la BD de QEB"
         right={
           indicesQ.data && (
             <StatusBadge
@@ -324,6 +411,45 @@ function InfoTile({
     >
       <div className="text-fg-faint text-[10.5px] uppercase tracking-wide">{label}</div>
       <div className="text-fg-primary mt-1 truncate">{value}</div>
+    </div>
+  )
+}
+
+function DbSparkline({
+  points,
+  loading,
+}: {
+  points: { ts: string; ok: boolean; responseMs: number }[]
+  loading?: boolean
+}) {
+  if (loading) return <div className="h-16 rounded bg-bg-inset animate-pulse" />
+  if (points.length === 0) {
+    return (
+      <div className="h-16 rounded bg-bg-inset border border-border-subtle flex items-center justify-center text-fg-muted text-[11.5px]">
+        aún no hay pings (espera 1-2 min tras arrancar el back)
+      </div>
+    )
+  }
+  const okMs = points.filter((p) => p.ok).map((p) => p.responseMs)
+  const maxMs = Math.max(200, ...okMs)
+  return (
+    <div className="h-16 rounded bg-bg-inset border border-border-subtle flex items-end gap-[1px] px-1 py-1">
+      {points.map((p, i) => {
+        const h = p.ok ? Math.max(4, Math.round((p.responseMs / maxMs) * 100)) : 100
+        const color = p.ok
+          ? p.responseMs > 1000
+            ? 'bg-state-warn'
+            : 'bg-state-ok'
+          : 'bg-state-crit'
+        return (
+          <div
+            key={i}
+            className={cn('flex-1 min-w-[2px] rounded-sm', color)}
+            style={{ height: `${h}%` }}
+            title={`${p.ts} · ${p.responseMs}ms${p.ok ? '' : ' · FALLO'}`}
+          />
+        )
+      })}
     </div>
   )
 }
