@@ -77,6 +77,18 @@ export default function Vps() {
   const procs = statusQ.data?.procs ?? []
   const procByKey = (key: string) => procs.find((p) => p.key === key)
 
+  // Acciones de los botones (reiniciar proceso / limpiar cache del proxy SAP).
+  async function restart(source: string): Promise<string> {
+    const r = await api.post<{ ok: boolean; pm2: string }>(`/droplet/restart/${source}`)
+    if (!r.ok) throw new Error('no se pudo reiniciar')
+    return `reiniciado (${r.pm2})`
+  }
+  async function clearCache(group: string): Promise<string> {
+    const r = await api.post<{ ok: boolean }>(`/droplet/clear-cache/${group}`)
+    if (!r.ok) throw new Error('no se pudo limpiar cache')
+    return group === 'todo' ? 'cache limpiado' : `cache ${group.toUpperCase()} limpiado`
+  }
+
   // Las fuentes salen del propio estado (orden estable del back); fallback fijo.
   const sources = procs.length
     ? procs.map((p) => ({ key: p.key, label: p.label }))
@@ -169,6 +181,22 @@ export default function Vps() {
                 {p
                   ? `pm2: ${p.pm2} · uptime ${fmtUptime(p.uptimeMs)} · ↺ ${p.restarts ?? '—'} · ${fmtMem(p.memory)}`
                   : 'sin datos del proceso'}
+              </div>
+              <div className="mt-2.5 flex flex-wrap items-center gap-1.5 border-t border-border-subtle pt-2.5">
+                <ActionButton
+                  label="reiniciar"
+                  danger
+                  onRun={() => restart(s.key)}
+                  onDone={() => statusQ.refetch()}
+                />
+                {s.key === 'qeb-api' && (
+                  <>
+                    <span className="text-fg-faint text-[10px] ml-1">cache:</span>
+                    <ActionButton label="CIMU" onRun={() => clearCache('cimu')} />
+                    <ActionButton label="TRADE" onRun={() => clearCache('trade')} />
+                    <ActionButton label="todo" onRun={() => clearCache('todo')} />
+                  </>
+                )}
               </div>
             </div>
           )
@@ -300,5 +328,91 @@ function LogConsole({
         ))}
       </div>
     </Section>
+  )
+}
+
+// Boton de accion con confirmacion en 2 pasos + feedback (evita clicks accidentales
+// sobre acciones que tocan prod: reiniciar un proceso, limpiar cache).
+function ActionButton({
+  label,
+  onRun,
+  danger = false,
+  onDone,
+}: {
+  label: string
+  onRun: () => Promise<string>
+  danger?: boolean
+  onDone?: () => void
+}) {
+  const [phase, setPhase] = useState<'idle' | 'confirm' | 'running'>('idle')
+  const [flash, setFlash] = useState<{ ok: boolean; msg: string } | null>(null)
+
+  async function run() {
+    setPhase('running')
+    try {
+      const msg = await onRun()
+      setFlash({ ok: true, msg })
+      onDone?.()
+    } catch (e) {
+      setFlash({ ok: false, msg: e instanceof Error ? e.message : 'error' })
+    } finally {
+      setPhase('idle')
+      window.setTimeout(() => setFlash(null), 4000)
+    }
+  }
+
+  if (flash) {
+    return (
+      <span
+        className={cn(
+          'px-2 h-6 inline-flex items-center rounded border text-[11px] whitespace-nowrap',
+          flash.ok
+            ? 'border-state-ok/50 text-state-ok bg-state-ok/10'
+            : 'border-state-crit/50 text-state-crit bg-state-crit/10',
+        )}
+      >
+        {flash.ok ? '✓ ' : '✕ '}
+        {flash.msg}
+      </span>
+    )
+  }
+  if (phase === 'running') {
+    return (
+      <span className="px-2 h-6 inline-flex items-center rounded border border-border-subtle text-fg-muted text-[11px]">
+        … {label}
+      </span>
+    )
+  }
+  if (phase === 'confirm') {
+    return (
+      <span className="inline-flex items-center gap-1">
+        <button
+          onClick={run}
+          className="px-2 h-6 rounded border border-state-crit/60 bg-state-crit/10 text-state-crit text-[11px]"
+        >
+          confirmar {label}
+        </button>
+        <button
+          onClick={() => setPhase('idle')}
+          className="px-2 h-6 rounded border border-border-subtle text-fg-muted text-[11px]"
+          title="cancelar"
+        >
+          ✕
+        </button>
+      </span>
+    )
+  }
+  return (
+    <button
+      onClick={() => setPhase('confirm')}
+      className={cn(
+        'px-2 h-6 rounded border text-[11px]',
+        danger
+          ? 'border-state-crit/40 text-state-crit hover:bg-state-crit/10'
+          : 'border-border-subtle text-fg-muted hover:text-fg-primary',
+      )}
+    >
+      {label}
+    </button>
   )
 }
